@@ -1,0 +1,25 @@
+{
+  "site_id": "eventor_orienteering_org",
+  "base_url": "https://eventor.orienteering.sport/",
+  "events_url": "https://eventor.orienteering.sport/Events",
+  "strategy": "firecrawl",
+  "proxy_tier": "none",
+  "requires_javascript": false,
+  "request_delay_min": 2.0,
+  "request_delay_max": 5.0,
+  "respect_robots_txt": true,
+  "selectors": {
+    "event_container": null,
+    "event_name": null,
+    "event_date": null,
+    "event_location": null,
+    "event_link": null,
+    "pagination_next": null
+  },
+  "api_endpoint": null,
+  "last_successful_scrape": null,
+  "consecutive_failures": 0,
+  "last_healed_at": null,
+  "sport": "orienteering",
+  "notes": "Initial profile for IOF Eventor. Selectors are set to null so the LLM healer can automatically map them on the first run."
+}

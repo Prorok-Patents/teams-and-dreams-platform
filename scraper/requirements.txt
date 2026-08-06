@@ -1,0 +1,36 @@
+# Teams and Dreams — Scraper Dependencies
+
+# Core HTTP & async
+httpx>=0.27.0
+pydantic>=2.7.0
+
+# HTML parsing
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
+
+# Headless browser (install separately: playwright install chromium)
+playwright>=1.44.0
+
+# Task queue (Phase 2 — distributed scraping)
+# celery>=5.4.0
+# redis>=5.0.0
+
+# LLM integrations (uncomment the one you need)
+# google-generativeai>=0.5.0    # Gemini
+openai>=1.30.0                # OpenAI
+# anthropic>=0.25.0             # Anthropic
+
+# Utilities
+python-dotenv>=1.0.0
+
+# LLM Structured Output
+instructor>=1.3.0
+
+# HTML to Markdown
+crawl4ai>=0.2.77
+
+# Autonomous Interactive Browsing
+browser-use>=0.1.5
+
+# Event Discovery via Web Search
+duckduckgo-search>=5.0.0

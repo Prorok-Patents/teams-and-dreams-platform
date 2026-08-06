@@ -1,0 +1,18 @@
+{
+  "site_id": "ermatinger_open_com",
+  "base_url": "https://www.ermatinger-open.com/",
+  "events_url": "https://www.ermatinger-open.com/regeln",
+  "strategy": "raw_http",
+  "proxy_tier": "datacenter",
+  "requires_javascript": false,
+  "selectors": {
+    "event_container": "article.event",
+    "event_name": "h3.title",
+    "event_date": "div.date",
+    "event_location": "div.location",
+    "event_link": "a",
+    "pagination_next": null
+  },
+  "sport": "pro-rockskipping",
+  "notes": "Auto-generated from discovery of Swish Championships"
+}

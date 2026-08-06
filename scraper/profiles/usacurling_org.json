@@ -1,0 +1,18 @@
+{
+  "site_id": "usacurling_org",
+  "base_url": "https://usacurling.org",
+  "events_url": "https://usacurling.org/events",
+  "strategy": "raw_http",
+  "proxy_tier": "datacenter",
+  "requires_javascript": false,
+  "selectors": {
+    "event_container": "article.event",
+    "event_name": "h3.title",
+    "event_date": "div.date",
+    "event_location": "div.location",
+    "event_link": "a",
+    "pagination_next": null
+  },
+  "sport": "curling",
+  "notes": "Seed profile created manually for major curling source"
+}

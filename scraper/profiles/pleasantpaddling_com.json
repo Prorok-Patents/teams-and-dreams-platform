@@ -1,0 +1,18 @@
+{
+  "site_id": "pleasantpaddling_com",
+  "base_url": "https://pleasantpaddling.com/events/canada-s-rock-skipping-championship/",
+  "events_url": "https://pleasantpaddling.com/events/",
+  "strategy": "raw_http",
+  "proxy_tier": "datacenter",
+  "requires_javascript": false,
+  "selectors": {
+    "event_container": "article.event",
+    "event_name": "h3.title",
+    "event_date": "div.date",
+    "event_location": "div.location",
+    "event_link": "a",
+    "pagination_next": null
+  },
+  "sport": "pro-rockskipping",
+  "notes": "Auto-generated from discovery of Nova Scotia's Rock Skipping Championship"
+}

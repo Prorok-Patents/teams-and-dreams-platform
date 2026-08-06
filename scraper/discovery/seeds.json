@@ -1,0 +1,263 @@
+{
+  "organizations": [
+    {
+      "name": "Belgian-Dutch Stone Skimming Championships",
+      "acronym": null,
+      "role_description": "Organizes the continental stone skimming championships on the Belgium/Netherlands border.",
+      "inferred_type": "national_federation",
+      "inferred_scope": "continental",
+      "website_url": "https://rivierparkmaasvallei.eu/stoneskimming/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "New Zealand Stone Skimming Championships",
+      "acronym": null,
+      "role_description": "Organizes the national stone skimming championships at Lake Hawea.",
+      "inferred_type": "national_federation",
+      "inferred_scope": "national",
+      "website_url": "https://www.instagram.com/lakehaweastationliving/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Welsh Stone Skimming Championships",
+      "acronym": null,
+      "role_description": "Organizes the Welsh Open and national skimming championships.",
+      "inferred_type": "national_federation",
+      "inferred_scope": "national",
+      "website_url": "https://www.green-events.co.uk/welsh-open-stone-skimming",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Flathead Lake Rock Skipping Championships",
+      "acronym": null,
+      "role_description": "Organizes the Flathead Lake tournament in Polson, Montana.",
+      "inferred_type": "tournament_organizer",
+      "inferred_scope": "regional",
+      "website_url": "https://www.facebook.com/p/Flathead-Lake-Rock-Skipping-100063749633236/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Kentucky Stone Skipping Invitational",
+      "acronym": null,
+      "role_description": "Hosts the Kentucky invitational rock skipping tournament.",
+      "inferred_type": "national_federation",
+      "inferred_scope": "regional",
+      "website_url": "https://www.instagram.com/jonthegreengiant/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Orne's Candy Store International Rock-Skipping Contest",
+      "acronym": null,
+      "role_description": "Organizes the historic Webster Memorial Rock-Skipping Contest in Maine.",
+      "inferred_type": "tournament_organizer",
+      "inferred_scope": "local",
+      "website_url": "https://www.boothbayharborwindjammerdays.org/arthur-webster-memorial-rock-skipping-contest",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Swish Championships",
+      "acronym": null,
+      "role_description": "Organizes the Swiss open rock skipping championship in Ermatingen.",
+      "inferred_type": "tournament_organizer",
+      "inferred_scope": "national",
+      "website_url": "https://www.ermatinger-open.com/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Rock of Ages Challenge",
+      "acronym": null,
+      "role_description": "Organizes the Rock of Ages rock skipping event in Michigan.",
+      "inferred_type": "tournament_organizer",
+      "inferred_scope": "local",
+      "website_url": "https://www.instagram.com/rockofageschallenge/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Nova Scotia's Rock Skipping Championship",
+      "acronym": null,
+      "role_description": "Organizes the Canadian and Nova Scotian rock skipping championships.",
+      "inferred_type": "national_federation",
+      "inferred_scope": "national",
+      "website_url": "https://pleasantpaddling.com/events/canada-s-rock-skipping-championship/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Rock in River Festival",
+      "acronym": null,
+      "role_description": "Organizes the Pennsylvania State Stone Skipping Championship.",
+      "inferred_type": "tournament_organizer",
+      "inferred_scope": "regional",
+      "website_url": "https://franklinpa.gov/index.asp?SEC=757DD541-3DEE-444F-B398-E26F36EE3282&DE=2B3FFB81-1271-4912-BA4C-9FCE0C3C5DC4",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Great Southern Stone Skipping Championships",
+      "acronym": null,
+      "role_description": "Organizes the southern regional stone skipping championships in Arkansas.",
+      "inferred_type": "national_federation",
+      "inferred_scope": "national",
+      "website_url": "https://stoneskipping.org/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Berlin Titscher Masters",
+      "acronym": null,
+      "role_description": "Organizes the Berlin Masters skimming event.",
+      "inferred_type": "national_federation",
+      "inferred_scope": "national",
+      "website_url": "https://titschermasters.de/",
+      "wikipedia_url": null
+    },
+    {
+      "name": "Lake Paran Stone Skipping Festival",
+      "acronym": null,
+      "role_description": "Organizes the annual festival in Vermont.",
+      "inferred_type": "tournament_organizer",
+      "inferred_scope": "local",
+      "website_url": "https://lakeparanvt.org/events/",
+      "wikipedia_url": null
+    }
+  ],
+  "competitions": [
+    {
+      "name": "Argentine First National Stone Skipping Competition",
+      "competition_type": "knockout_tournament",
+      "organizer_name": null,
+      "description": "First national competition in Argentina.",
+      "website_url": null
+    },
+    {
+      "name": "Inariver Kansai Stone Skipping Cup",
+      "competition_type": "knockout_tournament",
+      "organizer_name": null,
+      "description": "Kansai regional cup.",
+      "website_url": null
+    },
+    {
+      "name": "Belgian-Dutch Stone Skimming Championships",
+      "organizer_name": "Belgian-Dutch Stone Skimming Championships",
+      "competition_type": "knockout_tournament",
+      "description": "Championships on the border.",
+      "website_url": "https://rivierparkmaasvallei.eu/stoneskimming/"
+    },
+    {
+      "name": "Kreuzberg Masters",
+      "competition_type": "knockout_tournament",
+      "organizer_name": null,
+      "description": "Masters event in Berlin.",
+      "website_url": null
+    },
+    {
+      "name": "New Zealand Stone Skimming Championships",
+      "organizer_name": "New Zealand Stone Skimming Championships",
+      "competition_type": "knockout_tournament",
+      "description": "National skimming championships.",
+      "website_url": "https://www.instagram.com/lakehaweastationliving/"
+    },
+    {
+      "name": "Nagara River Stone Skipping Competition",
+      "competition_type": "knockout_tournament",
+      "organizer_name": null,
+      "description": "Nagara river competition.",
+      "website_url": null
+    },
+    {
+      "name": "Welsh Stone Skimming Championships",
+      "organizer_name": "Welsh Stone Skimming Championships",
+      "competition_type": "knockout_tournament",
+      "description": "Welsh open championships.",
+      "website_url": "https://www.green-events.co.uk/welsh-open-stone-skimming"
+    },
+    {
+      "name": "Flathead Lake Rock Skipping Championships",
+      "organizer_name": "Flathead Lake Rock Skipping Championships",
+      "competition_type": "knockout_tournament",
+      "description": "Flathead Lake event.",
+      "website_url": "https://www.facebook.com/p/Flathead-Lake-Rock-Skipping-100063749633236/"
+    },
+    {
+      "name": "Kentucky Stone Skipping Invitational",
+      "organizer_name": "Kentucky Stone Skipping Invitational",
+      "competition_type": "knockout_tournament",
+      "description": "Invitational event.",
+      "website_url": "https://www.instagram.com/jonthegreengiant/"
+    },
+    {
+      "name": "Orne's Candy Store International Rock-Skipping Contest",
+      "organizer_name": "Orne's Candy Store International Rock-Skipping Contest",
+      "competition_type": "knockout_tournament",
+      "description": "Arthur Webster Memorial.",
+      "website_url": "https://www.boothbayharborwindjammerdays.org/arthur-webster-memorial-rock-skipping-contest"
+    },
+    {
+      "name": "Swish Championships",
+      "organizer_name": "Swish Championships",
+      "competition_type": "knockout_tournament",
+      "description": "Ermatinger Open Swish.",
+      "website_url": "https://www.ermatinger-open.com/"
+    },
+    {
+      "name": "Rock of Ages Challenge",
+      "organizer_name": "Rock of Ages Challenge",
+      "competition_type": "knockout_tournament",
+      "description": "Challenge in Michigan.",
+      "website_url": "https://www.instagram.com/rockofageschallenge/"
+    },
+    {
+      "name": "Teshio River Stone Skipping",
+      "competition_type": "knockout_tournament",
+      "organizer_name": null,
+      "description": "Hokkaido tournament.",
+      "website_url": null
+    },
+    {
+      "name": "Nova Scotia's Rock Skipping Championship",
+      "organizer_name": "Nova Scotia's Rock Skipping Championship",
+      "competition_type": "knockout_tournament",
+      "description": "Championship in Nova Scotia.",
+      "website_url": "https://pleasantpaddling.com/events/canada-s-rock-skipping-championship/"
+    },
+    {
+      "name": "Rock in River Festival",
+      "organizer_name": "Rock in River Festival",
+      "competition_type": "knockout_tournament",
+      "description": "PA state championship.",
+      "website_url": "https://franklinpa.gov/index.asp?SEC=757DD541-3DEE-444F-B398-E26F36EE3282&DE=2B3FFB81-1271-4912-BA4C-9FCE0C3C5DC4"
+    },
+    {
+      "name": "Great Southern Stone Skipping Championships",
+      "organizer_name": "Great Southern Stone Skipping Championships",
+      "competition_type": "knockout_tournament",
+      "description": "Championships in Little Rock.",
+      "website_url": "https://stoneskipping.org/"
+    },
+    {
+      "name": "Berlin Titscher Masters",
+      "organizer_name": "Berlin Titscher Masters",
+      "competition_type": "knockout_tournament",
+      "description": "Masters event in Berlin.",
+      "website_url": "https://titschermasters.de/"
+    },
+    {
+      "name": "Lake Paran Stone Skipping Festival",
+      "organizer_name": "Lake Paran Stone Skipping Festival",
+      "competition_type": "knockout_tournament",
+      "description": "Festival in Vermont.",
+      "website_url": "https://lakeparanvt.org/events/"
+    },
+    {
+      "name": "West Sixth Stone Skipping Competition",
+      "competition_type": "knockout_tournament",
+      "organizer_name": null,
+      "description": "Event in Frankfort.",
+      "website_url": null
+    },
+    {
+      "name": "Niyodo River International Stone Skipping Championship",
+      "competition_type": "knockout_tournament",
+      "organizer_name": null,
+      "description": "Niyodo River event.",
+      "website_url": null
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "site_id": "stoneskimming_com",
+  "base_url": "https://www.stoneskimming.com/",
+  "events_url": "https://www.stoneskimming.com/2026-championships/2026-schedule/",
+  "strategy": "raw_http",
+  "proxy_tier": "datacenter",
+  "requires_javascript": false,
+  "selectors": {
+    "event_container": "article.event",
+    "event_name": "h3.title",
+    "event_date": "div.date",
+    "event_location": "div.location",
+    "event_link": "a",
+    "pagination_next": null
+  },
+  "sport": "pro-rockskipping",
+  "notes": "Auto-generated from discovery of Manchester Stone Skimming Society"
+}
