@@ -732,7 +732,7 @@ function NewSportModal({
     };
 
     try {
-      await fetch("http://localhost:8000/api/v1/scraper/profiles", {
+      await fetch("/api/v1/scraper/profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -920,7 +920,7 @@ function LiveLogModal({
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/scraper/runs/${runId}`);
+        const res = await fetch(`/api/v1/scraper/runs/${runId}`);
         if (res.ok) {
           const data = await res.json();
           if (data.status) setStatus(data.status);
@@ -1010,7 +1010,7 @@ export default function Home() {
   useEffect(() => {
     async function fetchSites() {
       try {
-        const res = await fetch("http://localhost:8000/api/v1/scraper/profiles");
+        const res = await fetch("/api/v1/scraper/profiles");
         if (res.ok) {
           const profiles = await res.json();
           if (Array.isArray(profiles) && profiles.length > 0) {
@@ -1084,7 +1084,7 @@ export default function Home() {
       prev.map((s) => (s.site_id === siteId ? { ...s, pipeline_stage: targetStage } : s))
     );
     try {
-      await fetch(`http://localhost:8000/api/site-knowledge/${siteId}/stage`, {
+      await fetch(`/api/site-knowledge/${siteId}/stage`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pipeline_stage: targetStage }),
@@ -1098,7 +1098,7 @@ export default function Home() {
     setActiveRunSiteId(siteId);
     let runId = `run-${Date.now().toString(36)}`;
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/scraper/run/${siteId}`, {
+      const res = await fetch(`/api/v1/scraper/run/${siteId}`, {
         method: "POST",
       });
       if (res.ok) {

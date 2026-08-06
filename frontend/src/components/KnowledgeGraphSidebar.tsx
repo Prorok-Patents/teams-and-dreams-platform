@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Database, Network } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 interface KGNode {
   id: string;
@@ -26,16 +27,18 @@ export default function KnowledgeGraphSidebar() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/v1/knowledge-graph/sports')
-      .then(res => res.json())
-      .then(data => {
-        setSports(data);
-        setLoading(false);
-      })
-      .catch(err => {
+    async function loadSports() {
+      try {
+        const { data, error } = await supabase.from('sports').select('*');
+        if (error) console.error('Supabase error fetching sports:', error);
+        setSports(data || []);
+      } catch (err) {
         console.error(err);
+      } finally {
         setLoading(false);
-      });
+      }
+    }
+    loadSports();
   }, []);
 
   return (

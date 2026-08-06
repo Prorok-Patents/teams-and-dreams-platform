@@ -4,9 +4,9 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import Map, { Source, Layer, MapRef, NavigationControl } from 'react-map-gl/mapbox';
 import type { CircleLayer, SymbolLayer, MapLayerMouseEvent, GeoJSONSource } from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { supabase } from '@/lib/supabase';
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 
 export interface MapEvent {
   id: string;
@@ -79,31 +79,32 @@ export default function MapComponent({ filters, onEventsLoaded, onSelectEvent }:
     if (!mapRef.current) return;
     const bounds = mapRef.current.getBounds();
     if (!bounds) return;
-    
-    const params = new URLSearchParams({
-      min_lon: String(bounds.getWest()),
-      min_lat: String(bounds.getSouth()),
-      max_lon: String(bounds.getEast()),
-      max_lat: String(bounds.getNorth()),
-    });
-
-    if (filters?.sport) params.set('sport', filters.sport);
-    if (filters?.level) params.set('level', filters.level);
-    if (filters?.dateStart) params.set('date_start', filters.dateStart);
-    if (filters?.dateEnd) params.set('date_end', filters.dateEnd);
 
     try {
-      const response = await fetch(`${API_URL}/api/v1/events?${params.toString()}`);
-      if (response.ok) {
-        const geojson = await response.json();
+      const { data: geojson, error } = await supabase.rpc('get_events_in_bbox', {
+        min_lon: bounds.getWest(),
+        min_lat: bounds.getSouth(),
+        max_lon: bounds.getEast(),
+        max_lat: bounds.getNorth(),
+        sport_filter: filters?.sport || null,
+        level_filter: filters?.level || null,
+        date_start: filters?.dateStart ? `${filters.dateStart}T00:00:00` : null,
+        date_end: filters?.dateEnd ? `${filters.dateEnd}T23:59:59` : null,
+      });
+
+      if (error) {
+        console.error('Supabase RPC error fetching events:', error);
+        return;
+      }
+
+      if (geojson) {
         setData(geojson);
 
-        // Extract events from GeoJSON features and report upstream
-        if (onEventsLoaded && geojson?.features) {
+        if (onEventsLoaded && geojson.features) {
           const events: MapEvent[] = geojson.features
             .filter((f: GeoJSON.Feature) => !f.properties?.point_count)
             .map((f: GeoJSON.Feature) => ({
-              id: f.properties?.id || (f.id as string) || '',
+              id: f.properties?.event_id || f.properties?.id || (f.id as string) || '',
               name: f.properties?.name || '',
               sport: f.properties?.sport || '',
               level: f.properties?.level || '',
@@ -124,7 +125,6 @@ export default function MapComponent({ filters, onEventsLoaded, onSelectEvent }:
   }, [filters, onEventsLoaded]);
 
   useEffect(() => {
-    // Re-fetch when filters change
     if (mapRef.current) {
       fetchEvents();
     }
@@ -158,7 +158,7 @@ export default function MapComponent({ filters, onEventsLoaded, onSelectEvent }:
 
     if (feature.layer?.id === 'unclustered-point' && onSelectEvent) {
       onSelectEvent({
-        id: feature.properties?.id || '',
+        id: feature.properties?.event_id || feature.properties?.id || '',
         name: feature.properties?.name || '',
         sport: feature.properties?.sport || '',
         level: feature.properties?.level || '',

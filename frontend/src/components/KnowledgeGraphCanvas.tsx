@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { supabase } from '@/lib/supabase';
 
 // dynamically import react-force-graph to prevent SSR issues
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), { ssr: false });
@@ -33,25 +34,33 @@ export default function KnowledgeGraphCanvas({ selectedSportId }: KnowledgeGraph
 
   useEffect(() => {
     setLoading(true);
-    // If a sport is selected, fetch its subgraph. Otherwise fetch the global graph.
-    const url = selectedSportId 
-      ? `http://localhost:8000/api/v1/knowledge-graph/sports/${selectedSportId}/graph`
-      : `http://localhost:8000/api/v1/knowledge-graph/sports/1/graph`; // Fallback to first sport for now
-
-    fetch(url)
-      .then(res => res.json())
-      .then(data => {
-        // Force graph expects 'links' instead of 'edges'
-        setGraphData({
-          nodes: data.nodes || [],
-          edges: data.edges?.map((e: any) => ({ ...e, source: e.source, target: e.target })) || []
+    
+    async function loadGraph() {
+      try {
+        const { data, error } = await supabase.rpc('get_sport_graph', {
+          p_sport_id: selectedSportId || null
         });
-        setLoading(false);
-      })
-      .catch(err => {
+
+        if (error) {
+          console.error('Supabase RPC error fetching graph:', error);
+          setLoading(false);
+          return;
+        }
+
+        if (data) {
+          setGraphData({
+            nodes: data.nodes || [],
+            edges: data.edges?.map((e: any) => ({ ...e, source: e.source, target: e.target })) || []
+          });
+        }
+      } catch (err) {
         console.error(err);
+      } finally {
         setLoading(false);
-      });
+      }
+    }
+
+    loadGraph();
   }, [selectedSportId]);
 
   return (

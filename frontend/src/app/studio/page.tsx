@@ -55,7 +55,8 @@ export default function StudioPage() {
     
     try {
       const res = await runScraper(selectedSiteId);
-      const wsUrl = `ws://localhost:8000/api/v1/scraper/runs/${res.run_id}/stream`;
+      const apiHost = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/^http/, 'ws');
+      const wsUrl = `${apiHost}/api/v1/scraper/runs/${res.run_id}/stream`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       

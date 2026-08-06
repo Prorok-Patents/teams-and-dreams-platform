@@ -14,6 +14,8 @@ interface ScraperRun {
   logs: string[];
 }
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000') + '/api/v1';
+
 export default function ScraperTerminal() {
   const [runs, setRuns] = useState<ScraperRun[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +26,7 @@ export default function ScraperTerminal() {
 
   const fetchRuns = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/scraper/runs');
+      const res = await fetch(`${API_BASE}/scraper/runs`);
       if (res.ok) {
         const data = await res.json();
         setRuns(data);
@@ -61,16 +63,14 @@ export default function ScraperTerminal() {
     setIsScraping(true);
     addToast(`Started scraper for ${target}`, 'info');
     try {
-      const res = await fetch('http://localhost:8000/api/v1/scraper/run', {
+      const res = await fetch(`${API_BASE}/scraper/run/${target}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target })
       });
       if (res.ok) {
         const data = await res.json();
         setRuns(prev => [data, ...prev]);
-        setActiveRunId(data.id);
-        addToast(`Scraper run created: ${data.id}`, 'success');
+        setActiveRunId(data.run_id || data.id);
+        addToast(`Scraper run created: ${data.run_id || data.id}`, 'success');
       } else {
         addToast('Failed to start scraper', 'error');
         setIsScraping(false);
