@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Space+Grotesk:wght@400;500;600&display=swap');
+
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+@layer base {
+  :root {
+    --background: #0f1115;
+    --foreground: #e2e8f0;
+    --card: #1a1d24;
+    --card-foreground: #e2e8f0;
+    --popover: #1a1d24;
+    --popover-foreground: #e2e8f0;
+    --primary: #fbbf24;
+    --primary-foreground: #000000;
+    --secondary: #1a1d24;
+    --secondary-foreground: #e2e8f0;
+    --muted: #232730;
+    --muted-foreground: #94a3b8;
+    --accent: #232730;
+    --accent-foreground: #fbbf24;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #ffffff1a;
+    --input: #ffffff1a;
+    --ring: #fbbf24;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif text-white;
+  }
+}
+
+/* Mapbox overrides */
+.mapboxgl-popup-content {
+  @apply bg-card text-card-foreground border-border border rounded-md shadow-lg p-4;
+}
+.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip {
+  @apply border-t-card;
+}
+.mapboxgl-popup-close-button {
+  @apply text-muted-foreground;
+}
+.mapboxgl-popup-close-button:hover {
+  @apply text-foreground bg-white/10;
+}
