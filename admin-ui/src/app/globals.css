@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+:root {
+  --background: #090D1A;
+  --foreground: #F1F5F9;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Select element dark mode fix */
+select option {
+  background: #0C1226;
+  color: #F1F5F9;
+}
+
+/* Focus ring consistency */
+*:focus-visible {
+  outline: 1px solid #38BDF8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
