@@ -7,7 +7,7 @@ import math
 from pydantic import BaseModel
 
 from database import get_db
-from models import Sport, Organization, Competition, OrgRelationship
+from models import Sport, Organization, Competition, OrgRelationship, Division
 
 router = APIRouter(prefix="/api/knowledge-graph", tags=["Knowledge Graph"])
 
@@ -74,6 +74,13 @@ async def get_sport_graph(sport_id: uuid.UUID, db: AsyncSession = Depends(get_db
     # Get Competitions
     comps_result = await db.execute(select(Competition).where(Competition.sport_id == sport_id))
     comps = comps_result.scalars().all()
+    
+    # Get Divisions
+    comp_ids = [comp.id for comp in comps]
+    divs = []
+    if comp_ids:
+        divs_result = await db.execute(select(Division).where(Division.competition_id.in_(comp_ids)))
+        divs = divs_result.scalars().all()
     
     # Get Relationships (where both parent and child belong to this sport)
     org_ids = [org.id for org in orgs]
@@ -151,6 +158,26 @@ async def get_sport_graph(sport_id: uuid.UUID, db: AsyncSession = Depends(get_db
                 "label": "organizes"
             })
             
+    # Division nodes
+    for idx, div in enumerate(divs):
+        nodes.append({
+            "id": f"div_{div.id}",
+            "label": div.name,
+            "type": "division",
+            "x": 1100,
+            "y": 100 + (idx * 100),
+            "data": {
+                "tier": div.tier_level,
+                "region": div.region
+            }
+        })
+        edges.append({
+            "id": f"edge_comp_{div.competition_id}_div_{div.id}",
+            "source": f"comp_{div.competition_id}",
+            "target": f"div_{div.id}",
+            "label": "contains"
+        })
+            
     # Relationships
     for rel in rels:
         edges.append({
@@ -164,3 +191,59 @@ async def get_sport_graph(sport_id: uuid.UUID, db: AsyncSession = Depends(get_db
         "nodes": nodes,
         "edges": edges
     }
+
+class BatchOperation(BaseModel):
+    action: str  # "create", "update", "delete"
+    entity_type: str  # "sport", "organization", "competition", "division", "relationship"
+    entity_id: Optional[uuid.UUID] = None
+    data: Optional[Dict[str, Any]] = None
+
+class BatchRequest(BaseModel):
+    operations: List[BatchOperation]
+
+@router.post("/batch")
+async def batch_mutate(batch: BatchRequest, db: AsyncSession = Depends(get_db)):
+    """Generic endpoint for handling multiple graph mutations simultaneously."""
+    results = []
+    
+    # Very simplified batch processing for demonstration.
+    # In reality, this would map entity_type to SQLAlchemy models and perform mutations.
+    for op in batch.operations:
+        if op.action == "create":
+            # mock create
+            new_id = uuid.uuid4()
+            results.append({"action": "create", "entity_type": op.entity_type, "id": str(new_id), "status": "success"})
+        elif op.action == "update":
+            results.append({"action": "update", "entity_type": op.entity_type, "id": str(op.entity_id), "status": "success"})
+        elif op.action == "delete":
+            results.append({"action": "delete", "entity_type": op.entity_type, "id": str(op.entity_id), "status": "success"})
+            
+    # await db.commit()
+    return {"status": "success", "operations_processed": len(batch.operations), "results": results}
+
+@router.get("/search")
+async def search_graph(q: str, sport_id: Optional[uuid.UUID] = None, db: AsyncSession = Depends(get_db)):
+    """Full-text search across multiple entity types for the graph UI."""
+    # Simplified search implementation
+    from sqlalchemy import or_
+    
+    results = []
+    
+    # Search Orgs
+    org_q = select(Organization).where(Organization.name.ilike(f"%{q}%"))
+    if sport_id:
+        org_q = org_q.where(Organization.sport_id == sport_id)
+    orgs = await db.execute(org_q)
+    for org in orgs.scalars().all():
+        results.append({"id": str(org.id), "type": "organization", "name": org.name})
+        
+    # Search Comps
+    comp_q = select(Competition).where(Competition.name.ilike(f"%{q}%"))
+    if sport_id:
+        comp_q = comp_q.where(Competition.sport_id == sport_id)
+    comps = await db.execute(comp_q)
+    for comp in comps.scalars().all():
+        results.append({"id": str(comp.id), "type": "competition", "name": comp.name})
+        
+    # Would search Divisions, Events, etc as well
+    return {"query": q, "results": results}

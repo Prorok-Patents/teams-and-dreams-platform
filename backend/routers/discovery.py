@@ -7,9 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-# Ensure scraper package can be imported
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-from scraper.discovery.pipeline import DiscoveryPipeline
+# Scraper pipeline is imported lazily inside run_discovery_task
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +107,8 @@ async def trigger_discovery(request: DiscoveryRunRequest, background_tasks: Back
 
     async def run_discovery_task():
         try:
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+            from scraper.discovery.pipeline import DiscoveryPipeline
             pipeline = DiscoveryPipeline(use_playwright=request.use_playwright)
             
             formatted_orgs = []

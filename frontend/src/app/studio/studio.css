@@ -1,0 +1,42 @@
+.react-flow__renderer {
+  background-color: #0a0a0c;
+  background-image: 
+    radial-gradient(#333 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Custom scrollbars for studio panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent; 
+}
+::-webkit-scrollbar-thumb {
+  background: #333; 
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #555; 
+}
+
+/* Glassmorphism helpers */
+.glass-panel {
+  background: rgba(10, 10, 12, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.react-flow__node {
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+}
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: #3b82f6;
+  border: 2px solid #0a0a0c;
+}

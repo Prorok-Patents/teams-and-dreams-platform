@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from database import engine, Base, get_db
 from models import Event, Venue, ScraperRun, LLMUsage
-from routers import scraper, knowledge_graph, site_knowledge, discovery
+from routers import scraper, knowledge_graph, site_knowledge, discovery, research
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,6 +30,7 @@ app.include_router(scraper.router)
 app.include_router(knowledge_graph.router)
 app.include_router(site_knowledge.router)
 app.include_router(discovery.router)
+app.include_router(research.router)
 
 
 @app.get("/health")

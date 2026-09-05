@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, FolderTree, Code2, CheckSquare, Settings } from 'lucide-react';
+import { LayoutDashboard, FolderTree, Code2, CheckSquare, Settings, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/directory', label: 'Site Directory', icon: FolderTree },
-  { href: '/studio', label: 'Scraper Studio', icon: Code2 },
+  { href: '/studio', label: 'Research Studio', icon: Network },
   { href: '/qa', label: 'Data QA', icon: CheckSquare },
 ];
 
@@ -19,7 +19,7 @@ export default function GlobalSidebar() {
     <aside className="w-64 bg-card border-r border-border h-screen flex flex-col">
       <div className="p-6">
         <h1 className="text-xl font-serif text-primary font-bold italic tracking-wider">
-          ScraperOps
+          Teams & Dreams
         </h1>
       </div>
 

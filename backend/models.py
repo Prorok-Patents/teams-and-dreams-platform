@@ -231,3 +231,36 @@ class SiteKnowledge(Base, TimestampMixin):
     notes = Column(String, nullable=True)
 
     organization = relationship("Organization")
+
+class Division(Base, TimestampMixin):
+    __tablename__ = "divisions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False)
+    competition_id = Column(UUID(as_uuid=True), ForeignKey("competitions.id"), nullable=False, index=True)
+    tier_level = Column(Integer, default=1)
+    region = Column(String, nullable=True)
+    conference_name = Column(String, nullable=True)
+    metadata_json = Column(JSONB, default=dict)
+
+    competition = relationship("Competition", backref="divisions")
+
+class ResearchNote(Base, TimestampMixin):
+    __tablename__ = "research_notes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_type = Column(String, nullable=False, index=True)
+    entity_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    note_text = Column(String, nullable=False)
+    tags = Column(JSONB, default=list)
+
+class GraphSnapshot(Base, TimestampMixin):
+    __tablename__ = "graph_snapshots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sport_id = Column(UUID(as_uuid=True), ForeignKey("sports.id"), nullable=False, index=True)
+    snapshot_name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    graph_json = Column(JSONB, nullable=False)
+
+    sport = relationship("Sport", backref="graph_snapshots")
