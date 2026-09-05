@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import NodeCanvas, { NodeData, EdgeData } from "./NodeCanvas";
@@ -8,6 +8,10 @@ import NodeInspector from "./NodeInspector";
 import FormBuilder from "./FormBuilder";
 import SportSelectorModal from "./SportSelectorModal";
 import NodeFilterBar, { FilterMode } from "./NodeFilterBar";
+import ExportImportModal from "./ExportImportModal";
+import DiagnosticsDrawer from "./DiagnosticsDrawer";
+import { runGraphDiagnostics, DiagnosticItem } from "./graphDiagnostics";
+import { SPORT_TEMPLATES } from "./templates";
 import {
   Network,
   Play,
@@ -16,9 +20,12 @@ import {
   Send,
   SlidersHorizontal,
   Sparkles,
-  CheckCircle,
-  AlertCircle,
-  LayoutGrid
+  LayoutGrid,
+  Download,
+  ShieldCheck,
+  PanelRightClose,
+  PanelRightOpen,
+  Terminal
 } from "lucide-react";
 
 /** Stable-keyed log entry for React reconciliation */
@@ -27,76 +34,146 @@ interface LogEntry {
   text: string;
 }
 
-/** Minimal typed shape for useChat messages (SDK types are unstable in v7) */
+/** Minimal typed shape for useChat messages */
 interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
-  content: string;
+  content?: string;
+  parts?: unknown[];
+  text?: string;
+  [key: string]: unknown;
+}
+
+interface HistorySnapshot {
+  nodes: NodeData[];
+  edges: EdgeData[];
 }
 
 export default function SportBuilderStudio() {
-  const [viewMode, setViewMode] = useState<"quick" | "canvas" | "form" | "split">("canvas");
+  const [viewMode, setViewMode] = useState<"canvas" | "form" | "split">("canvas");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
-  // Default Nodes State
-  const [nodes, setNodes] = useState<NodeData[]>([
-    {
-      id: "sport_curling",
-      type: "sport",
-      label: "Curling",
-      x: 100,
-      y: 180,
-      data: { category: "Winter Sports", wikipedia_url: "https://en.wikipedia.org/wiki/Curling" }
-    },
-    {
-      id: "org_wcf",
-      type: "organization",
-      label: "World Curling",
-      x: 420,
-      y: 100,
-      data: { acronym: "WCF", scope: "international", org_type: "governing_body", website_url: "https://worldcurling.org" }
-    },
-    {
-      id: "org_curling_canada",
-      type: "organization",
-      label: "Curling Canada",
-      x: 420,
-      y: 260,
-      data: { acronym: "CC", scope: "national", org_type: "federation", website_url: "https://curling.ca" }
-    },
-    {
-      id: "comp_brier",
-      type: "competition",
-      label: "The Montana's Brier",
-      x: 740,
-      y: 260,
-      data: { tier: 1, gender: "men", url: "https://curling.ca/brier" }
-    },
-    {
-      id: "site_wcf_events",
-      type: "web_source",
-      label: "World Curling Events Calendar",
-      x: 740,
-      y: 100,
-      data: { url: "https://worldcurling.org/events", antibot: "none" }
-    }
-  ]);
+  // Initial Nodes & Edges (Default: Curling Olympic standard)
+  const defaultTemplate = SPORT_TEMPLATES[0];
+  const [nodes, setNodes] = useState<NodeData[]>(defaultTemplate.nodes);
+  const [edges, setEdges] = useState<EdgeData[]>(defaultTemplate.edges);
+  const [currentSportBadge, setCurrentSportBadge] = useState<string>("Curling");
 
-  // Default Connections
-  const [edges, setEdges] = useState<EdgeData[]>([
-    { id: "e1", source: "sport_curling", target: "org_wcf", label: "governed by" },
-    { id: "e2", source: "sport_curling", target: "org_curling_canada", label: "governed by" },
-    { id: "e3", source: "org_wcf", target: "site_wcf_events", label: "publishes" },
-    { id: "e4", source: "org_curling_canada", target: "comp_brier", label: "sanctions" }
+  // Undo / Redo History Stack
+  const [history, setHistory] = useState<HistorySnapshot[]>([
+    { nodes: defaultTemplate.nodes, edges: defaultTemplate.edges }
   ]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  const pushHistory = useCallback((newNodes: NodeData[], newEdges: EdgeData[]) => {
+    setHistory(prev => {
+      const trimmed = prev.slice(0, historyIndex + 1);
+      return [...trimmed, { nodes: newNodes, edges: newEdges }];
+    });
+    setHistoryIndex(prev => prev + 1);
+  }, [historyIndex]);
+
+  const handleUpdateNodes = useCallback((newNodes: NodeData[], addToHistory = true) => {
+    setNodes(newNodes);
+    if (addToHistory) {
+      pushHistory(newNodes, edges);
+    }
+  }, [edges, pushHistory]);
+
+  const handleUpdateEdges = useCallback((newEdges: EdgeData[], addToHistory = true) => {
+    setEdges(newEdges);
+    if (addToHistory) {
+      pushHistory(nodes, newEdges);
+    }
+  }, [nodes, pushHistory]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      const prev = history[historyIndex - 1];
+      setHistoryIndex(historyIndex - 1);
+      setNodes(prev.nodes);
+      setEdges(prev.edges);
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+    }
+  }, [history, historyIndex]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const next = history[historyIndex + 1];
+      setHistoryIndex(historyIndex + 1);
+      setNodes(next.nodes);
+      setEdges(next.edges);
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+    }
+  }, [history, historyIndex]);
+
+  // Modals & Panels State
+  const [isExportImportOpen, setIsExportImportOpen] = useState(false);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [isAssistantExpanded, setIsAssistantExpanded] = useState(true);
+  const [assistantTab, setAssistantTab] = useState<"chat" | "logs">("chat");
 
   // Filter State
   const [filterQuery, setFilterQuery] = useState("");
-  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set(["sport", "organization", "competition", "web_source", "scraper_config"]));
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(
+    new Set(["sport", "organization", "competition", "web_source", "scraper_config"])
+  );
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [filterMode, setFilterMode] = useState<FilterMode>("dim");
-  const [currentSportBadge, setCurrentSportBadge] = useState<string>("Draft");
+  const [showOrphansOnly, setShowOrphansOnly] = useState(false);
+
+  // Real-time Graph Diagnostics
+  const diagnosticReport = useMemo(() => runGraphDiagnostics(nodes, edges), [nodes, edges]);
+
+  // Filter Nodes & Edges
+  const filteredNodes = useMemo(() => {
+    return nodes.filter(n => {
+      const matchType = selectedTypes.has(n.type);
+      const matchStatus = selectedStatus === "all" || n.status === selectedStatus;
+      const matchOrphan = !showOrphansOnly || diagnosticReport.orphanNodeIds.has(n.id);
+      const matchQuery =
+        !filterQuery ||
+        n.label.toLowerCase().includes(filterQuery.toLowerCase()) ||
+        n.id.toLowerCase().includes(filterQuery.toLowerCase()) ||
+        (n.data && JSON.stringify(n.data).toLowerCase().includes(filterQuery.toLowerCase()));
+      return matchType && matchStatus && matchOrphan && matchQuery;
+    });
+  }, [nodes, selectedTypes, selectedStatus, showOrphansOnly, filterQuery, diagnosticReport.orphanNodeIds]);
+
+  const matchingNodeIds = useMemo(() => new Set(filteredNodes.map(n => n.id)), [filteredNodes]);
+
+  const displayNodes = filterMode === "hide" ? filteredNodes : nodes;
+  const displayEdges =
+    filterMode === "hide"
+      ? edges.filter(e => matchingNodeIds.has(e.source) && matchingNodeIds.has(e.target))
+      : edges;
+
+  // Pipeline Execution State
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveryLog, setDiscoveryLog] = useState<LogEntry[]>([]);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const logBatchRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
+
+  // Template / Sport Loaders
+  const handleLoadTemplate = (templateId: string) => {
+    const tmpl = SPORT_TEMPLATES.find(t => t.id === templateId);
+    if (!tmpl) return;
+    setNodes(tmpl.nodes);
+    setEdges(tmpl.edges);
+    setCurrentSportBadge(tmpl.name.split(" ")[0]);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    pushHistory(tmpl.nodes, tmpl.edges);
+  };
 
   const handleLoadSport = async (sportId: string, sportName: string) => {
     try {
@@ -104,24 +181,22 @@ export default function SportBuilderStudio() {
       if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to load sport graph`);
       const data = await res.json();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rawNodes = Array.isArray(data?.nodes) ? data.nodes : [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rawEdges = Array.isArray(data?.edges) ? data.edges : [];
+      const rawNodes = Array.isArray(data?.nodes) ? (data.nodes as Record<string, unknown>[]) : [];
+      const rawEdges = Array.isArray(data?.edges) ? (data.edges as Record<string, unknown>[]) : [];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sanitizedNodes: NodeData[] = rawNodes.map((n: any) => ({
+      const sanitizedNodes: NodeData[] = rawNodes.map(n => ({
         id: String(n.id || `node_${crypto.randomUUID()}`),
-        type: (["sport", "organization", "competition", "web_source", "scraper_config"].includes(n.type) ? n.type : "organization") as NodeData["type"],
+        type: (typeof n.type === "string" && ["sport", "organization", "competition", "web_source", "scraper_config"].includes(n.type)
+          ? n.type
+          : "organization") as NodeData["type"],
         label: String(n.label || "Unnamed Node"),
         x: typeof n.x === "number" ? n.x : 200,
         y: typeof n.y === "number" ? n.y : 200,
-        data: n.data && typeof n.data === "object" ? n.data : {},
-        status: n.status || "idle"
+        data: n.data && typeof n.data === "object" ? (n.data as Record<string, unknown>) : {},
+        status: (n.status as NodeData["status"]) || "idle"
       }));
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sanitizedEdges: EdgeData[] = rawEdges.map((e: any) => ({
+      const sanitizedEdges: EdgeData[] = rawEdges.map(e => ({
         id: String(e.id || `edge_${crypto.randomUUID()}`),
         source: String(e.source || ""),
         target: String(e.target || ""),
@@ -133,214 +208,22 @@ export default function SportBuilderStudio() {
       setCurrentSportBadge(sportName);
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
+      pushHistory(sanitizedNodes, sanitizedEdges);
     } catch (err) {
       console.error("Error loading sport graph:", err);
     }
   };
 
-  // Compute filtered nodes
-  const filteredNodes = nodes.filter(n => {
-    const matchType = selectedTypes.has(n.type);
-    const matchStatus = selectedStatus === "all" || n.status === selectedStatus;
-    const matchQuery = !filterQuery || 
-      n.label.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      n.id.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      (n.data && JSON.stringify(n.data).toLowerCase().includes(filterQuery.toLowerCase()));
-    return matchType && matchStatus && matchQuery;
-  });
-
-  const matchingNodeIds = new Set(filteredNodes.map(n => n.id));
-
-  // If filterMode === "hide", we only pass the matching nodes/edges down to canvas and form.
-  const displayNodes = filterMode === "hide" ? filteredNodes : nodes;
-  const displayEdges = filterMode === "hide" 
-    ? edges.filter(e => matchingNodeIds.has(e.source) && matchingNodeIds.has(e.target))
-    : edges;
-
-  // Execution & Logs
-  const [isDiscovering, setIsDiscovering] = useState(false);
-  const [discoveryLog, setDiscoveryLog] = useState<LogEntry[]>([]);
-  const [validationResult, setValidationResult] = useState<{ valid: boolean; warnings: string[]; errors: string[] } | null>(null);
-
-  // Interval Ref for status polling cleanup
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  // Counter ref for deterministic server-log IDs (append-only list, indices are stable)
-  const logBatchRef = useRef(0);
-
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
-  }, []);
-
-  // Copilot Chat
-  const [chatInput, setChatInput] = useState("");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chat = (useChat as (...args: unknown[]) => Record<string, unknown>)({ api: "/api/chat" });
-  const messages: ChatMessage[] = (Array.isArray(chat?.messages) ? chat.messages : []) as ChatMessage[];
-  const chatStatus = String(chat?.status ?? "ready");
-  const isLoading = chatStatus === "submitted" || chatStatus === "streaming";
-
-  // Track processed tool call IDs to prevent duplicate graph additions
-  const processedToolCallIdsRef = useRef<Set<string>>(new Set());
-
-  // Automatically convert AI tool calls into visual graph nodes & edges
-  useEffect(() => {
-    if (!Array.isArray(chat?.messages)) return;
-    for (const msg of chat.messages as any[]) {
-      const parts = msg.parts || msg.toolInvocations || msg.toolCalls || [];
-      if (!Array.isArray(parts)) continue;
-      for (const part of parts) {
-        const toolCall = part.toolInvocation || part;
-        const toolName = toolCall?.toolName || part?.toolName;
-        const args = toolCall?.args;
-        if (!toolName || !args) continue;
-
-        const callId = String(toolCall.toolCallId || toolCall.id || JSON.stringify({ toolName, args }));
-        if (processedToolCallIdsRef.current.has(callId)) continue;
-        processedToolCallIdsRef.current.add(callId);
-
-        if (toolName === 'submit_sport_info') {
-          const sportName = String(args.sport_name || "New Sport");
-          const wikiTitle = String(args.wiki_title || "");
-          const orgs = Array.isArray(args.major_orgs) ? args.major_orgs : [];
-
-          const sportNodeId = `sport_${crypto.randomUUID()}`;
-          const newSportNode: NodeData = {
-            id: sportNodeId,
-            type: "sport",
-            label: sportName,
-            x: 150,
-            y: 180,
-            data: { wikipedia_url: wikiTitle ? `https://en.wikipedia.org/wiki/${encodeURIComponent(wikiTitle)}` : "" }
-          };
-
-          const newOrgNodes: NodeData[] = [];
-          const newEdges: EdgeData[] = [];
-
-          orgs.forEach((org: any, idx: number) => {
-            const orgName = typeof org === 'string' ? org : String(org?.name || `Organization ${idx + 1}`);
-            const orgId = `org_${crypto.randomUUID()}`;
-            newOrgNodes.push({
-              id: orgId,
-              type: "organization",
-              label: orgName,
-              x: 450,
-              y: 100 + idx * 140,
-              data: typeof org === 'object' && org !== null ? org : {}
-            });
-            newEdges.push({
-              id: `edge_${crypto.randomUUID()}`,
-              source: sportNodeId,
-              target: orgId,
-              label: "governed by"
-            });
-          });
-
-          setNodes(prev => [...prev, newSportNode, ...newOrgNodes]);
-          setEdges(prev => [...prev, ...newEdges]);
-          setSelectedNodeId(sportNodeId);
-          setDiscoveryLog(prev => [...prev, {
-            id: `ai_${crypto.randomUUID()}`,
-            text: `🤖 Intake Copilot automatically created nodes for '${sportName}' (${newOrgNodes.length} Orgs)`
-          }]);
-        } else if (toolName === 'add_nodes_and_edges') {
-          const rawNodes = Array.isArray(args.nodes) ? args.nodes : [];
-          const rawEdges = Array.isArray(args.edges) ? args.edges : [];
-
-          const labelToIdMap = new Map<string, string>();
-          nodes.forEach(n => {
-            labelToIdMap.set(n.label.toLowerCase(), n.id);
-            labelToIdMap.set(n.id.toLowerCase(), n.id);
-          });
-
-          const createdNodes: NodeData[] = [];
-          rawNodes.forEach((n: any, idx: number) => {
-            const nodeId = `${n.type || "org"}_${crypto.randomUUID()}`;
-            const label = String(n.label || `Node ${idx + 1}`);
-            labelToIdMap.set(label.toLowerCase(), nodeId);
-            labelToIdMap.set(nodeId.toLowerCase(), nodeId);
-
-            createdNodes.push({
-              id: nodeId,
-              type: n.type || "organization",
-              label,
-              x: 350 + (idx % 3) * 240,
-              y: 120 + Math.floor(idx / 3) * 160,
-              data: typeof n.data === "object" && n.data !== null ? n.data : {}
-            });
-          });
-
-          const createdEdges: EdgeData[] = [];
-          rawEdges.forEach((e: any) => {
-            const srcId = labelToIdMap.get(String(e.source_label || "").toLowerCase());
-            const tgtId = labelToIdMap.get(String(e.target_label || "").toLowerCase());
-            if (srcId && tgtId && srcId !== tgtId) {
-              createdEdges.push({
-                id: `edge_${crypto.randomUUID()}`,
-                source: srcId,
-                target: tgtId,
-                label: String(e.label || "connects")
-              });
-            }
-          });
-
-          setNodes(prev => [...prev, ...createdNodes]);
-          setEdges(prev => [...prev, ...createdEdges]);
-          setDiscoveryLog(prev => [...prev, {
-            id: `ai_${crypto.randomUUID()}`,
-            text: `🤖 AI Assistant placed ${createdNodes.length} nodes & ${createdEdges.length} wires on the canvas.`
-          }]);
-        } else if (toolName === 'delete_nodes') {
-          const targets = (Array.isArray(args.node_labels_or_ids) ? args.node_labels_or_ids : []).map((t: any) => String(t).toLowerCase());
-          setNodes(prev => prev.filter(n => !targets.includes(n.id.toLowerCase()) && !targets.includes(n.label.toLowerCase())));
-          setEdges(prev => prev.filter(e => {
-            const srcNode = nodes.find(n => n.id === e.source);
-            const tgtNode = nodes.find(n => n.id === e.target);
-            const srcMatch = targets.includes(e.source.toLowerCase()) || (srcNode && targets.includes(srcNode.label.toLowerCase()));
-            const tgtMatch = targets.includes(e.target.toLowerCase()) || (tgtNode && targets.includes(tgtNode.label.toLowerCase()));
-            return !srcMatch && !tgtMatch;
-          }));
-          setDiscoveryLog(prev => [...prev, {
-            id: `ai_${crypto.randomUUID()}`,
-            text: `🤖 AI Assistant removed nodes matching: ${targets.join(", ")}`
-          }]);
-        } else if (toolName === 'update_node') {
-          const target = String(args.target_label_or_id || "").toLowerCase();
-          const newLabel = args.new_label;
-          const dataUpdates = typeof args.data_updates === "object" && args.data_updates !== null ? args.data_updates : {};
-
-          setNodes(prev => prev.map(n => {
-            if (n.id.toLowerCase() === target || n.label.toLowerCase() === target) {
-              return {
-                ...n,
-                label: newLabel ? String(newLabel) : n.label,
-                data: { ...n.data, ...dataUpdates }
-              };
-            }
-            return n;
-          }));
-          setDiscoveryLog(prev => [...prev, {
-            id: `ai_${crypto.randomUUID()}`,
-            text: `🤖 AI Assistant updated node '${args.target_label_or_id}'`
-          }]);
-        }
-      }
-    }
-  }, [chat?.messages, nodes]);
-
-  const handleSendChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = chatInput.trim();
-    if (!text || isLoading) return;
-    setChatInput("");
-    if (typeof chat?.sendMessage === "function") {
-      (chat.sendMessage as (msg: { text: string }) => void)({ text });
-    }
+  const handleImportGraph = (importedNodes: NodeData[], importedEdges: EdgeData[], importedSportName?: string) => {
+    setNodes(importedNodes);
+    setEdges(importedEdges);
+    if (importedSportName) setCurrentSportBadge(importedSportName);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    pushHistory(importedNodes, importedEdges);
   };
 
+  // Node Actions
   const handleAddNode = (type: NodeData["type"]) => {
     const id = `${type}_${crypto.randomUUID()}`;
     const labels = {
@@ -355,55 +238,78 @@ export default function SportBuilderStudio() {
       id,
       type,
       label: labels[type],
-      x: 400 + Math.random() * 100,
-      y: 150 + Math.random() * 100,
+      x: 350 + Math.random() * 120,
+      y: 150 + Math.random() * 120,
       data: {}
     };
 
-    setNodes(prev => [...prev, newNode]);
+    const updated = [...nodes, newNode];
+    setNodes(updated);
     setSelectedNodeId(id);
     setSelectedEdgeId(null);
+    pushHistory(updated, edges);
+  };
+
+  const handleDuplicateNode = (nodeId: string) => {
+    const target = nodes.find(n => n.id === nodeId);
+    if (!target) return;
+    const newNode: NodeData = {
+      ...target,
+      id: `${target.type}_${crypto.randomUUID()}`,
+      label: `${target.label} (Copy)`,
+      x: target.x + 50,
+      y: target.y + 50,
+      data: { ...target.data }
+    };
+    const updated = [...nodes, newNode];
+    setNodes(updated);
+    setSelectedNodeId(newNode.id);
+    pushHistory(updated, edges);
+  };
+
+  const handleDeleteNode = (nodeId: string) => {
+    const updatedNodes = nodes.filter(n => n.id !== nodeId);
+    const updatedEdges = edges.filter(e => e.source !== nodeId && e.target !== nodeId);
+    setNodes(updatedNodes);
+    setEdges(updatedEdges);
+    if (selectedNodeId === nodeId) setSelectedNodeId(null);
+    pushHistory(updatedNodes, updatedEdges);
   };
 
   const handleUpdateNode = (updatedNode: NodeData) => {
-    setNodes(prev => prev.map(n => n.id === updatedNode.id ? updatedNode : n));
+    const updated = nodes.map(n => (n.id === updatedNode.id ? updatedNode : n));
+    setNodes(updated);
+    pushHistory(updated, edges);
   };
 
-  const handleValidateGraph = async () => {
-    try {
-      const res = await fetch("/api/v1/discovery/validate-graph", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodes, edges })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setValidationResult(data);
-      } else {
-        setValidationResult({
-          valid: false,
-          warnings: [],
-          errors: [`HTTP Error ${res.status}: ${res.statusText}`]
-        });
+  // Diagnostics Auto-Fix
+  const handleAutoFix = (item: DiagnosticItem) => {
+    if (item.fixAction === "connect_to_sport" && item.nodeId) {
+      const sportNode = nodes.find(n => n.type === "sport");
+      if (sportNode) {
+        const newEdge: EdgeData = {
+          id: `edge_${crypto.randomUUID()}`,
+          source: sportNode.id,
+          target: item.nodeId,
+          label: "governed by"
+        };
+        const updatedEdges = [...edges, newEdge];
+        setEdges(updatedEdges);
+        pushHistory(nodes, updatedEdges);
       }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Backend unreachable";
-      setValidationResult({
-        valid: false,
-        warnings: [],
-        errors: [`Connection failed: ${msg}`]
-      });
     }
   };
 
+  // Run Intake Pipeline
   const handleRunPipeline = async () => {
     const sportNode = nodes.find(n => n.type === "sport");
-    const sportName = sportNode?.label || "Curling";
-    
+    const sportName = sportNode?.label || currentSportBadge || "Curling";
+
     setIsDiscovering(true);
     logBatchRef.current += 1;
     setDiscoveryLog([{ id: `init_${logBatchRef.current}`, text: "Initiating Sport Intake Workflow..." }]);
-    
+    setAssistantTab("logs");
+
     // Mark nodes as running
     setNodes(prev => prev.map(n => ({ ...n, status: "running" })));
 
@@ -426,36 +332,190 @@ export default function SportBuilderStudio() {
 
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
-      // Poll discovery status safely
       pollIntervalRef.current = setInterval(async () => {
         try {
           const statusRes = await fetch(`/api/v1/discovery/status/${data.job_id}`);
           if (statusRes.ok) {
             const statusData = await statusRes.json();
             if (statusData.logs && Array.isArray(statusData.logs)) {
-              // Server logs are append-only; use batch + index for stable keys
               const batch = logBatchRef.current;
-              setDiscoveryLog((statusData.logs as string[]).map((text: string, i: number) => ({
-                id: `srv_${batch}_${i}`,
-                text
-              })));
+              setDiscoveryLog(
+                (statusData.logs as string[]).map((text: string, i: number) => ({
+                  id: `srv_${batch}_${i}`,
+                  text
+                }))
+              );
             }
             if (statusData.status === "completed" || statusData.status === "failed") {
               if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
               setIsDiscovering(false);
-              setNodes(prev => prev.map(n => ({ ...n, status: statusData.status === "completed" ? "completed" : "failed" })));
+              setNodes(prev =>
+                prev.map(n => ({ ...n, status: statusData.status === "completed" ? "completed" : "failed" }))
+              );
             }
           }
         } catch {
           // ignore transient poll error
         }
       }, 2000);
-
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : "Pipeline trigger error";
       setDiscoveryLog(prev => [...prev, { id: `err_${crypto.randomUUID()}`, text: `Error: ${errorMsg}` }]);
       setIsDiscovering(false);
       setNodes(prev => prev.map(n => ({ ...n, status: "failed" })));
+    }
+  };
+
+  // Copilot Chat
+  const [chatInput, setChatInput] = useState("");
+  const chat = (useChat as (...args: unknown[]) => Record<string, unknown>)({ api: "/api/chat" });
+  const messages: ChatMessage[] = (Array.isArray(chat?.messages) ? chat.messages : []) as ChatMessage[];
+  const chatStatus = String(chat?.status ?? "ready");
+  const isLoading = chatStatus === "submitted" || chatStatus === "streaming";
+  const processedToolCallIdsRef = useRef<Set<string>>(new Set());
+
+  // Automatically convert AI tool calls into visual graph nodes & edges
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!Array.isArray(chat?.messages)) return;
+    for (const rawMsg of chat.messages) {
+      const msg = rawMsg as Record<string, unknown>;
+      const parts = (msg.parts || msg.toolInvocations || msg.toolCalls || []) as Record<string, unknown>[];
+      if (!Array.isArray(parts)) continue;
+      for (const part of parts) {
+        const toolCall = (part.toolInvocation || part) as Record<string, unknown>;
+        const toolName = String(toolCall?.toolName || part?.toolName || "");
+        const args = toolCall?.args as Record<string, unknown> | undefined;
+        if (!toolName || !args) continue;
+
+        const callId = String(toolCall.toolCallId || toolCall.id || JSON.stringify({ toolName, args }));
+        if (processedToolCallIdsRef.current.has(callId)) continue;
+        processedToolCallIdsRef.current.add(callId);
+
+        if (toolName === "submit_sport_info") {
+          const sportName = String(args.sport_name || "New Sport");
+          const wikiTitle = String(args.wiki_title || "");
+          const orgs = Array.isArray(args.major_orgs) ? (args.major_orgs as (string | Record<string, unknown>)[]) : [];
+
+          const sportNodeId = `sport_${crypto.randomUUID()}`;
+          const newSportNode: NodeData = {
+            id: sportNodeId,
+            type: "sport",
+            label: sportName,
+            x: 150,
+            y: 180,
+            data: { wikipedia_url: wikiTitle ? `https://en.wikipedia.org/wiki/${encodeURIComponent(wikiTitle)}` : "" }
+          };
+
+          const newOrgNodes: NodeData[] = [];
+          const newEdges: EdgeData[] = [];
+
+          orgs.forEach((org, idx) => {
+            const orgName = typeof org === "string" ? org : String(org?.name || `Organization ${idx + 1}`);
+            const orgId = `org_${crypto.randomUUID()}`;
+            newOrgNodes.push({
+              id: orgId,
+              type: "organization",
+              label: orgName,
+              x: 450,
+              y: 100 + idx * 140,
+              data: typeof org === "object" && org !== null ? org : {}
+            });
+            newEdges.push({
+              id: `edge_${crypto.randomUUID()}`,
+              source: sportNodeId,
+              target: orgId,
+              label: "governed by"
+            });
+          });
+
+          const nextNodes = [...nodes, newSportNode, ...newOrgNodes];
+          const nextEdges = [...edges, ...newEdges];
+          setNodes(nextNodes);
+          setEdges(nextEdges);
+          pushHistory(nextNodes, nextEdges);
+          setSelectedNodeId(sportNodeId);
+        } else if (toolName === "add_nodes_and_edges") {
+          const rawNodes = Array.isArray(args.nodes) ? (args.nodes as Record<string, unknown>[]) : [];
+          const rawEdges = Array.isArray(args.edges) ? (args.edges as Record<string, unknown>[]) : [];
+
+          const labelToIdMap = new Map<string, string>();
+          nodes.forEach(n => {
+            labelToIdMap.set(n.label.toLowerCase(), n.id);
+            labelToIdMap.set(n.id.toLowerCase(), n.id);
+          });
+
+          const createdNodes: NodeData[] = [];
+          rawNodes.forEach((n, idx) => {
+            const nodeType = (typeof n.type === "string" && ["sport", "organization", "competition", "web_source", "scraper_config"].includes(n.type)
+              ? n.type
+              : "organization") as NodeData["type"];
+            const nodeId = `${nodeType}_${crypto.randomUUID()}`;
+            const label = String(n.label || `Node ${idx + 1}`);
+            labelToIdMap.set(label.toLowerCase(), nodeId);
+            labelToIdMap.set(nodeId.toLowerCase(), nodeId);
+
+            createdNodes.push({
+              id: nodeId,
+              type: nodeType,
+              label,
+              x: 350 + (idx % 3) * 240,
+              y: 120 + Math.floor(idx / 3) * 160,
+              data: typeof n.data === "object" && n.data !== null ? (n.data as Record<string, unknown>) : {}
+            });
+          });
+
+          const createdEdges: EdgeData[] = [];
+          rawEdges.forEach(e => {
+            const srcId = labelToIdMap.get(String(e.source_label || "").toLowerCase());
+            const tgtId = labelToIdMap.get(String(e.target_label || "").toLowerCase());
+            if (srcId && tgtId && srcId !== tgtId) {
+              createdEdges.push({
+                id: `edge_${crypto.randomUUID()}`,
+                source: srcId,
+                target: tgtId,
+                label: String(e.label || "connects")
+              });
+            }
+          });
+
+          const nextNodes = [...nodes, ...createdNodes];
+          const nextEdges = [...edges, ...createdEdges];
+          setNodes(nextNodes);
+          setEdges(nextEdges);
+          pushHistory(nextNodes, nextEdges);
+        } else if (toolName === "delete_nodes") {
+          const rawTargets = Array.isArray(args.node_labels_or_ids) ? (args.node_labels_or_ids as string[]) : [];
+          const targets = rawTargets.map(t => String(t).toLowerCase());
+          const nextNodes = nodes.filter(
+            n => !targets.includes(n.id.toLowerCase()) && !targets.includes(n.label.toLowerCase())
+          );
+          const nextEdges = edges.filter(e => {
+            const srcNode = nodes.find(n => n.id === e.source);
+            const tgtNode = nodes.find(n => n.id === e.target);
+            const srcMatch =
+              targets.includes(e.source.toLowerCase()) ||
+              (srcNode && targets.includes(srcNode.label.toLowerCase()));
+            const tgtMatch =
+              targets.includes(e.target.toLowerCase()) ||
+              (tgtNode && targets.includes(tgtNode.label.toLowerCase()));
+            return !srcMatch && !tgtMatch;
+          });
+          setNodes(nextNodes);
+          setEdges(nextEdges);
+          pushHistory(nextNodes, nextEdges);
+        }
+      }
+    }
+  }, [chat?.messages, nodes, edges, pushHistory]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const handleSendChat = (textToSend?: string) => {
+    const text = (textToSend || chatInput).trim();
+    if (!text || isLoading) return;
+    setChatInput("");
+    if (typeof chat?.sendMessage === "function") {
+      (chat.sendMessage as (msg: { text: string }) => void)({ text });
     }
   };
 
@@ -481,46 +541,77 @@ export default function SportBuilderStudio() {
           </div>
         </div>
 
-        {/* Sport Selector */}
-        <SportSelectorModal onSelectSport={handleLoadSport} />
+        {/* Center Actions: Sport Selector & View Modes */}
+        <div className="flex items-center gap-3">
+          <SportSelectorModal
+            currentSportName={currentSportBadge}
+            onSelectSport={handleLoadSport}
+            onSelectTemplate={handleLoadTemplate}
+          />
 
-        {/* View Mode Controls */}
-        <div className="flex items-center bg-slate-900/90 border border-slate-800 p-1 rounded-xl">
-          <button
-            onClick={() => setViewMode("canvas")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
-              viewMode === "canvas" ? "bg-sky-500 text-white shadow" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5" /> Visual Canvas
-          </button>
-          <button
-            onClick={() => setViewMode("form")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
-              viewMode === "form" ? "bg-sky-500 text-white shadow" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" /> Form View
-          </button>
-          <button
-            onClick={() => setViewMode("split")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
-              viewMode === "split" ? "bg-sky-500 text-white shadow" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <LayoutGrid className="h-3.5 w-3.5" /> Split View
-          </button>
+          {/* View Mode Switcher */}
+          <div className="flex items-center bg-slate-900/90 border border-slate-800 p-1 rounded-xl shadow-inner">
+            <button
+              onClick={() => setViewMode("canvas")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                viewMode === "canvas" ? "bg-sky-500 text-white shadow" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Visual Canvas
+            </button>
+            <button
+              onClick={() => setViewMode("form")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                viewMode === "form" ? "bg-sky-500 text-white shadow" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" /> Form View
+            </button>
+            <button
+              onClick={() => setViewMode("split")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                viewMode === "split" ? "bg-sky-500 text-white shadow" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Split View
+            </button>
+          </div>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-3">
+        {/* Right Actions: Diagnostics, Export, Run, Links */}
+        <div className="flex items-center gap-2.5">
+          {/* Diagnostics Button */}
           <button
-            onClick={handleValidateGraph}
-            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700 transition"
+            onClick={() => setIsDiagnosticsOpen(!isDiagnosticsOpen)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-xl border transition flex items-center gap-1.5 ${
+              diagnosticReport.isValid
+                ? diagnosticReport.warningCount === 0
+                  ? "bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800"
+                  : "bg-amber-950/60 border-amber-800 text-amber-300 hover:bg-amber-900/60"
+                : "bg-rose-950/60 border-rose-800 text-rose-300 hover:bg-rose-900/60"
+            }`}
+            title="Inspect graph diagnostics and validation"
           >
-            Validate Graph
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Diagnostics</span>
+            {!diagnosticReport.isValid ? (
+              <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+            ) : diagnosticReport.warningCount > 0 ? (
+              <span className="h-2 w-2 rounded-full bg-amber-500" />
+            ) : null}
           </button>
 
+          {/* Export / Import Button */}
+          <button
+            onClick={() => setIsExportImportOpen(true)}
+            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium rounded-xl transition flex items-center gap-1.5"
+            title="Export or Import graph schema"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Export / Import</span>
+          </button>
+
+          {/* Run Intake Pipeline */}
           <button
             onClick={handleRunPipeline}
             disabled={isDiscovering}
@@ -530,13 +621,22 @@ export default function SportBuilderStudio() {
             {isDiscovering ? "Running Discovery..." : "Run Intake Pipeline"}
           </button>
 
-          <Link href="/" className="text-xs text-sky-400 hover:underline ml-2">
+          {/* Assistant Toggle */}
+          <button
+            onClick={() => setIsAssistantExpanded(!isAssistantExpanded)}
+            title={isAssistantExpanded ? "Collapse Assistant" : "Expand Assistant"}
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl border border-slate-800 transition"
+          >
+            {isAssistantExpanded ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+          </button>
+
+          <Link href="/" className="text-xs text-sky-400 hover:underline ml-1">
             Dashboard
           </Link>
         </div>
       </header>
 
-      {/* Main Workspace Layout */}
+      {/* Main Studio Body */}
       <div className="flex-1 flex overflow-hidden relative flex-col">
         {/* Filter Bar */}
         <NodeFilterBar
@@ -550,10 +650,14 @@ export default function SportBuilderStudio() {
           setFilterMode={setFilterMode}
           totalNodes={nodes.length}
           matchingNodes={filteredNodes.length}
+          nodes={nodes}
+          orphanCount={diagnosticReport.orphanNodeIds.size}
+          showOrphansOnly={showOrphansOnly}
+          setShowOrphansOnly={setShowOrphansOnly}
         />
 
         <div className="flex-1 flex overflow-hidden relative">
-          {/* Left Side: Visual Canvas / Form Builder */}
+          {/* Canvas / Form Workspace Area */}
           <div className="flex-1 flex overflow-hidden">
             {(viewMode === "canvas" || viewMode === "split") && (
               <NodeCanvas
@@ -561,19 +665,25 @@ export default function SportBuilderStudio() {
                 edges={displayEdges}
                 selectedNodeId={selectedNodeId}
                 selectedEdgeId={selectedEdgeId}
-                onSelectNode={(id) => {
+                onSelectNode={id => {
                   setSelectedNodeId(id);
                   if (id) setSelectedEdgeId(null);
                 }}
-                onSelectEdge={(id) => {
+                onSelectEdge={id => {
                   setSelectedEdgeId(id);
                   if (id) setSelectedNodeId(null);
                 }}
-                onUpdateNodes={setNodes}
-                onUpdateEdges={setEdges}
+                onUpdateNodes={handleUpdateNodes}
+                onUpdateEdges={handleUpdateEdges}
                 onAddNode={handleAddNode}
+                onDuplicateNode={handleDuplicateNode}
                 isDiscovering={isDiscovering}
                 matchingNodeIds={filterMode === "dim" ? matchingNodeIds : undefined}
+                orphanNodeIds={diagnosticReport.orphanNodeIds}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                canUndo={historyIndex > 0}
+                canRedo={historyIndex < history.length - 1}
               />
             )}
 
@@ -581,127 +691,218 @@ export default function SportBuilderStudio() {
               <FormBuilder
                 nodes={displayNodes}
                 edges={displayEdges}
-                onUpdateNodes={setNodes}
-                onUpdateEdges={setEdges}
+                onUpdateNodes={handleUpdateNodes}
+                onUpdateEdges={handleUpdateEdges}
+                onLocateOnCanvas={nodeId => {
+                  setSelectedNodeId(nodeId);
+                  setViewMode("canvas");
+                }}
               />
             )}
           </div>
 
-        {/* Node Inspector Drawer */}
-        {selectedNode && (
-          <NodeInspector
-            node={selectedNode}
-            onClose={() => setSelectedNodeId(null)}
-            onUpdateNode={handleUpdateNode}
-          />
-        )}
+          {/* Node Inspector Drawer */}
+          {selectedNode && (
+            <NodeInspector
+              node={selectedNode}
+              nodes={nodes}
+              edges={edges}
+              onClose={() => setSelectedNodeId(null)}
+              onUpdateNode={handleUpdateNode}
+              onUpdateEdges={handleUpdateEdges}
+              onSelectNode={id => setSelectedNodeId(id)}
+              onDuplicateNode={handleDuplicateNode}
+              onDeleteNode={handleDeleteNode}
+              onCenterNode={id => setSelectedNodeId(id)}
+            />
+          )}
 
-        {/* Right Side: Copilot Chat & Execution Logs Panel */}
-        <div className="w-80 border-l border-[#1E293B] bg-[#0C1226]/80 backdrop-blur-md flex flex-col shrink-0">
-          {/* Header */}
-          <div className="h-12 px-4 border-b border-[#1E293B] flex items-center justify-between shrink-0">
-            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Bot className="h-4 w-4 text-indigo-400" /> Intake Assistant
-            </span>
-          </div>
-
-          {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-            {messages.length === 0 && (
-              <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl text-slate-400 space-y-2">
-                <p className="font-medium text-slate-300">Intake Copilot ready!</p>
-                <p>You can type natural instructions like:</p>
-                <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-400">
-                  <li>"Add World Curling and Curling Canada to the graph"</li>
-                  <li>"Set website for Brier to curling.ca"</li>
-                  <li>"Run intake for Disc Golf"</li>
-                </ul>
+          {/* Right Assistant / Live Logs Panel */}
+          {isAssistantExpanded && (
+            <div className="w-84 border-l border-[#1E293B] bg-[#0C1226]/90 backdrop-blur-md flex flex-col shrink-0">
+              {/* Tabs: AI Copilot vs. Live Stream */}
+              <div className="h-12 px-3 border-b border-[#1E293B] flex items-center justify-between shrink-0 bg-slate-950/40">
+                <div className="flex items-center gap-1 text-xs">
+                  <button
+                    onClick={() => setAssistantTab("chat")}
+                    className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
+                      assistantTab === "chat" ? "bg-slate-800 text-sky-400 shadow-sm" : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Bot className="h-3.5 w-3.5" /> Copilot
+                  </button>
+                  <button
+                    onClick={() => setAssistantTab("logs")}
+                    className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
+                      assistantTab === "logs" ? "bg-slate-800 text-emerald-400 shadow-sm" : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Terminal className="h-3.5 w-3.5" /> Logs {discoveryLog.length > 0 && `(${discoveryLog.length})`}
+                  </button>
+                </div>
+                <button
+                  onClick={() => setIsAssistantExpanded(false)}
+                  className="p-1 text-slate-500 hover:text-slate-300 rounded"
+                  title="Collapse Panel"
+                >
+                  <PanelRightClose className="h-3.5 w-3.5" />
+                </button>
               </div>
-            )}
 
-            {messages.map((msg) => {
-              const getMessageText = (m: any): string => {
-                if (typeof m.content === "string" && m.content.trim()) return m.content;
-                if (Array.isArray(m.parts)) {
-                  const texts = m.parts
-                    .filter((p: any) => p.type === "text" || (p.text && p.type !== "reasoning"))
-                    .map((p: any) => p.text)
-                    .filter(Boolean)
-                    .join("\n");
-                  if (texts.trim()) return texts;
-                }
-                if (typeof m.text === "string" && m.text.trim()) return m.text;
-                return "";
-              };
+              {/* Tab 1: AI Copilot */}
+              {assistantTab === "chat" && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+                    {messages.length === 0 && (
+                      <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl text-slate-400 space-y-2.5">
+                        <div className="flex items-center gap-2 font-semibold text-slate-200">
+                          <Bot className="h-4 w-4 text-indigo-400" /> Intake Copilot Ready
+                        </div>
+                        <p className="text-[11px] leading-relaxed">
+                          Ask me to research, build, or modify any sport graph structure with live canvas controls:
+                        </p>
+                        <div className="space-y-1.5 pt-1">
+                          <button
+                            onClick={() => handleSendChat("Add World Curling and Curling Canada to the graph")}
+                            className="w-full text-left p-2 rounded-lg bg-slate-950/80 hover:bg-slate-950 border border-slate-800/80 hover:border-slate-700 text-sky-300 text-[11px] transition"
+                          >
+                            ⚡ &quot;Add World Curling &amp; Curling Canada&quot;
+                          </button>
+                          <button
+                            onClick={() => handleSendChat("Add Disc Golf with PDGA and DGPT leagues")}
+                            className="w-full text-left p-2 rounded-lg bg-slate-950/80 hover:bg-slate-950 border border-slate-800/80 hover:border-slate-700 text-sky-300 text-[11px] transition"
+                          >
+                            ⚡ &quot;Add Disc Golf with PDGA &amp; DGPT&quot;
+                          </button>
+                          <button
+                            onClick={() => handleSendChat("Add web calendar source for events")}
+                            className="w-full text-left p-2 rounded-lg bg-slate-950/80 hover:bg-slate-950 border border-slate-800/80 hover:border-slate-700 text-sky-300 text-[11px] transition"
+                          >
+                            ⚡ &quot;Add web calendar source for events&quot;
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
-              const textContent = getMessageText(msg);
-              if (!textContent) return null;
+                    {messages.map(msg => {
+                      const getMessageText = (m: unknown): string => {
+                        if (!m || typeof m !== "object") return "";
+                        const rec = m as Record<string, unknown>;
+                        if (typeof rec.content === "string" && rec.content.trim()) return rec.content;
+                        if (Array.isArray(rec.parts)) {
+                          const texts = (rec.parts as Record<string, unknown>[])
+                            .filter(p => p && (p.type === "text" || (p.text && p.type !== "reasoning")))
+                            .map(p => String(p.text || ""))
+                            .filter(Boolean)
+                            .join("\n");
+                          if (texts.trim()) return texts;
+                        }
+                        if (typeof rec.text === "string" && rec.text.trim()) return rec.text;
+                        return "";
+                      };
 
-              return (
-                <div key={msg.id} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`p-3 rounded-xl max-w-[85%] ${
-                    msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-200'
-                  }`}>
-                    <p className="whitespace-pre-wrap leading-relaxed">{textContent}</p>
+                      const textContent = getMessageText(msg);
+                      if (!textContent) return null;
+
+                      return (
+                        <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                          <div
+                            className={`p-3 rounded-2xl max-w-[88%] ${
+                              msg.role === "user"
+                                ? "bg-sky-600 text-white shadow-md"
+                                : "bg-slate-900 border border-slate-800 text-slate-200"
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap leading-relaxed">{textContent}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Chat Input */}
+                  <div className="p-3 border-t border-[#1E293B] bg-[#070A14]">
+                    <form
+                      onSubmit={e => {
+                        e.preventDefault();
+                        handleSendChat();
+                      }}
+                      className="relative flex items-center"
+                    >
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={e => setChatInput(e.target.value)}
+                        disabled={isLoading}
+                        placeholder="Instruct Intake Copilot..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isLoading || !chatInput.trim()}
+                        className="absolute right-2 p-1.5 bg-sky-500 text-white rounded-lg hover:bg-sky-400 disabled:opacity-50 transition"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                      </button>
+                    </form>
                   </div>
                 </div>
-              );
-            })}
+              )}
 
-            {/* Live Pipeline Execution Log Stream */}
-            {discoveryLog.length > 0 && (
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl font-mono text-[11px] text-sky-400 space-y-1 max-h-48 overflow-y-auto">
-                <div className="text-[10px] text-slate-500 font-sans uppercase font-bold border-b border-slate-800 pb-1 mb-1">
-                  Live Intake Pipeline Stream
+              {/* Tab 2: Live Pipeline Logs */}
+              {assistantTab === "logs" && (
+                <div className="flex-1 flex flex-col overflow-hidden p-4 space-y-3 text-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="font-semibold text-slate-300 text-xs">Pipeline Execution Stream</span>
+                    <button
+                      onClick={() => setDiscoveryLog([])}
+                      className="text-[10px] text-slate-500 hover:text-slate-300"
+                    >
+                      Clear Logs
+                    </button>
+                  </div>
+
+                  <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] text-sky-400 overflow-y-auto space-y-1">
+                    {discoveryLog.length === 0 ? (
+                      <div className="text-slate-600 text-center py-8 font-sans">
+                        No active pipeline running. Click &quot;Run Intake Pipeline&quot; to initiate discovery.
+                      </div>
+                    ) : (
+                      discoveryLog.map(entry => (
+                        <div key={entry.id} className="leading-relaxed break-words">
+                          &gt; {entry.text}
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-                {discoveryLog.map((entry) => (
-                  <div key={entry.id}>&gt; {entry.text}</div>
-                ))}
-              </div>
-            )}
-
-            {/* Graph Validation Output */}
-            {validationResult && (
-              <div className={`p-3 rounded-xl border text-xs ${
-                validationResult.valid ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300' : 'bg-red-950/40 border-red-800 text-red-300'
-              }`}>
-                <div className="flex items-center gap-1.5 font-semibold mb-1">
-                  {validationResult.valid ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                  {validationResult.valid ? "Graph Validation Passed" : "Validation Errors"}
-                </div>
-                {validationResult.warnings.map((w, i) => (
-                  <div key={`warn_${i}`} className="text-[11px] opacity-80">• {w}</div>
-                ))}
-                {validationResult.errors.map((e, i) => (
-                  <div key={`err_${i}`} className="text-[11px] font-mono text-red-400">• {e}</div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Chat Input */}
-          <div className="p-3 border-t border-[#1E293B] bg-[#070A14]">
-            <form onSubmit={handleSendChat} className="relative flex items-center">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                disabled={isLoading}
-                placeholder="Ask intake copilot..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-              <button
-                type="submit"
-                disabled={isLoading || !chatInput.trim()}
-                className="absolute right-2 p-1.5 bg-sky-500 text-white rounded-lg hover:bg-sky-400 disabled:opacity-50 transition"
-              >
-                <Send className="h-3.5 w-3.5" />
-              </button>
-            </form>
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Slide-over Diagnostics Drawer */}
+      <DiagnosticsDrawer
+        isOpen={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+        report={diagnosticReport}
+        onSelectNode={nodeId => {
+          setSelectedNodeId(nodeId);
+          setIsDiagnosticsOpen(false);
+        }}
+        onAutoFix={handleAutoFix}
+      />
+
+      {/* Export / Import Modal */}
+      <ExportImportModal
+        isOpen={isExportImportOpen}
+        onClose={() => setIsExportImportOpen(false)}
+        nodes={nodes}
+        edges={edges}
+        sportName={currentSportBadge}
+        onImportGraph={handleImportGraph}
+      />
     </div>
-  </div>
-);
+  );
 }
