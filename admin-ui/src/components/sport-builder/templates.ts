@@ -1,4 +1,4 @@
-import { NodeData, EdgeData } from "./NodeCanvas";
+import { NodeData, EdgeData, WebSourceConfig } from "./NodeCanvas";
 
 export interface SportTemplate {
   id: string;
@@ -8,6 +8,86 @@ export interface SportTemplate {
   badge: string;
   nodes: NodeData[];
   edges: EdgeData[];
+}
+
+/**
+ * Normalizes a graph by migrating any legacy standalone `web_source`
+ * and `scraper_config` nodes into embedded `sources` inside their
+ * parent Organization or Competition nodes.
+ */
+export function normalizeGraph(nodes: NodeData[], edges: EdgeData[]): { nodes: NodeData[]; edges: EdgeData[] } {
+  const legacySourceIds = new Set<string>();
+  const legacyScraperIds = new Set<string>();
+
+  nodes.forEach(n => {
+    if (n.type === "web_source") legacySourceIds.add(n.id);
+    if (n.type === "scraper_config") legacyScraperIds.add(n.id);
+  });
+
+  if (legacySourceIds.size === 0 && legacyScraperIds.size === 0) {
+    return { nodes, edges };
+  }
+
+  // Clone nodes to avoid mutating in place
+  const updatedNodes = nodes.map(n => ({
+    ...n,
+    data: { ...n.data, sources: Array.isArray(n.data.sources) ? [...n.data.sources] : [] }
+  }));
+
+  legacySourceIds.forEach(sourceId => {
+    const sourceNode = nodes.find(n => n.id === sourceId);
+    if (!sourceNode) return;
+
+    // Find connected parent org or comp
+    const parentEdge = edges.find(
+      e => (e.target === sourceId || e.source === sourceId) &&
+           !legacySourceIds.has(e.source === sourceId ? e.target : e.source) &&
+           !legacyScraperIds.has(e.source === sourceId ? e.target : e.source)
+    );
+    const parentId = parentEdge ? (parentEdge.source === sourceId ? parentEdge.target : parentEdge.source) : null;
+    const parentNode = updatedNodes.find(n => n.id === parentId);
+
+    // Find connected scraper config
+    const scraperEdge = edges.find(
+      e => (e.source === sourceId && legacyScraperIds.has(e.target)) ||
+           (e.target === sourceId && legacyScraperIds.has(e.source))
+    );
+    const scraperId = scraperEdge ? (scraperEdge.source === sourceId ? scraperEdge.target : scraperEdge.source) : null;
+    const scraperNode = nodes.find(n => n.id === scraperId);
+
+    const embeddedSource: WebSourceConfig = {
+      id: sourceNode.id,
+      label: sourceNode.label,
+      url: typeof sourceNode.data.url === "string" ? sourceNode.data.url : "",
+      antibot: typeof sourceNode.data.antibot === "string" ? (sourceNode.data.antibot as WebSourceConfig["antibot"]) : "none",
+      depth: typeof scraperNode?.data?.depth === "number" ? scraperNode.data.depth : 2,
+      use_healer: scraperNode?.data?.use_healer !== false,
+      status: sourceNode.status || "idle"
+    };
+
+    if (parentNode) {
+      const currentSources = (parentNode.data.sources as WebSourceConfig[]) || [];
+      if (!currentSources.some(s => s.id === embeddedSource.id || (s.url && s.url === embeddedSource.url))) {
+        currentSources.push(embeddedSource);
+        parentNode.data.sources = currentSources;
+      }
+    }
+  });
+
+  // Filter out standalone web_source and scraper_config nodes
+  const filteredNodes = updatedNodes.filter(
+    n => n.type !== "web_source" && n.type !== "scraper_config"
+  );
+
+  // Filter out edges attached to legacy nodes
+  const filteredEdges = edges.filter(
+    e => !legacySourceIds.has(e.source) &&
+         !legacySourceIds.has(e.target) &&
+         !legacyScraperIds.has(e.source) &&
+         !legacyScraperIds.has(e.target)
+  );
+
+  return { nodes: filteredNodes, edges: filteredEdges };
 }
 
 export const SPORT_TEMPLATES: SportTemplate[] = [
@@ -33,7 +113,23 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         label: "World Curling Federation",
         x: 420,
         y: 100,
-        data: { acronym: "WCF", scope: "international", org_type: "governing_body", website_url: "https://worldcurling.org" },
+        data: {
+          acronym: "WCF",
+          scope: "international",
+          org_type: "governing_body",
+          website_url: "https://worldcurling.org",
+          sources: [
+            {
+              id: "src_wcf_1",
+              label: "World Curling Events Calendar",
+              url: "https://worldcurling.org/events",
+              antibot: "none",
+              depth: 2,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "completed"
       },
       {
@@ -42,25 +138,47 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         label: "Curling Canada",
         x: 420,
         y: 280,
-        data: { acronym: "CC", scope: "national", org_type: "federation", website_url: "https://curling.ca" },
+        data: {
+          acronym: "CC",
+          scope: "national",
+          org_type: "federation",
+          website_url: "https://curling.ca",
+          sources: [
+            {
+              id: "src_cc_1",
+              label: "Championships & Tournaments",
+              url: "https://curling.ca/championships",
+              antibot: "none",
+              depth: 2,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "completed"
-      },
-      {
-        id: "site_wcf_events",
-        type: "web_source",
-        label: "World Curling Events Calendar",
-        x: 780,
-        y: 80,
-        data: { url: "https://worldcurling.org/events", antibot: "none" },
-        status: "idle"
       },
       {
         id: "comp_brier",
         type: "competition",
         label: "The Montana's Brier",
         x: 780,
-        y: 240,
-        data: { tier: 1, gender: "men", url: "https://curling.ca/brier" },
+        y: 200,
+        data: {
+          tier: 1,
+          gender: "men",
+          url: "https://curling.ca/brier",
+          sources: [
+            {
+              id: "src_brier_1",
+              label: "Brier Event Hub",
+              url: "https://curling.ca/brier",
+              antibot: "none",
+              depth: 1,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "idle"
       },
       {
@@ -68,27 +186,31 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         type: "competition",
         label: "Scotties Tournament of Hearts",
         x: 780,
-        y: 380,
-        data: { tier: 1, gender: "women", url: "https://curling.ca/scotties" },
-        status: "idle"
-      },
-      {
-        id: "cfg_curling_crawler",
-        type: "scraper_config",
-        label: "Curling Events Scraper",
-        x: 1120,
-        y: 80,
-        data: { depth: 2, use_healer: true },
+        y: 350,
+        data: {
+          tier: 1,
+          gender: "women",
+          url: "https://curling.ca/scotties",
+          sources: [
+            {
+              id: "src_scotties_1",
+              label: "Scotties Hub & Draws",
+              url: "https://curling.ca/scotties",
+              antibot: "none",
+              depth: 1,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "idle"
       }
     ],
     edges: [
       { id: "e1", source: "sport_curling", target: "org_wcf", label: "governed by" },
       { id: "e2", source: "sport_curling", target: "org_curling_canada", label: "governed by" },
-      { id: "e3", source: "org_wcf", target: "site_wcf_events", label: "publishes" },
-      { id: "e4", source: "org_curling_canada", target: "comp_brier", label: "sanctions" },
-      { id: "e5", source: "org_curling_canada", target: "comp_scotties", label: "sanctions" },
-      { id: "e6", source: "site_wcf_events", target: "cfg_curling_crawler", label: "scrapes" }
+      { id: "e3", source: "org_curling_canada", target: "comp_brier", label: "sanctions" },
+      { id: "e4", source: "org_curling_canada", target: "comp_scotties", label: "sanctions" }
     ]
   },
   {
@@ -113,7 +235,23 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         label: "Professional Disc Golf Association",
         x: 420,
         y: 120,
-        data: { acronym: "PDGA", scope: "international", org_type: "governing_body", website_url: "https://pdga.com" },
+        data: {
+          acronym: "PDGA",
+          scope: "international",
+          org_type: "governing_body",
+          website_url: "https://pdga.com",
+          sources: [
+            {
+              id: "src_pdga_1",
+              label: "PDGA Sanctioned Events Directory",
+              url: "https://pdga.com/tour/events",
+              antibot: "none",
+              depth: 3,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "idle"
       },
       {
@@ -122,7 +260,23 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         label: "Disc Golf Pro Tour",
         x: 420,
         y: 300,
-        data: { acronym: "DGPT", scope: "international", org_type: "league", website_url: "https://dgpt.com" },
+        data: {
+          acronym: "DGPT",
+          scope: "international",
+          org_type: "league",
+          website_url: "https://dgpt.com",
+          sources: [
+            {
+              id: "src_dgpt_1",
+              label: "DGPT Schedule & Live Scoring",
+              url: "https://dgpt.com/schedule",
+              antibot: "cloud-flare",
+              depth: 2,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "idle"
       },
       {
@@ -130,7 +284,7 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         type: "competition",
         label: "PDGA World Championships",
         x: 780,
-        y: 100,
+        y: 120,
         data: { tier: 1, gender: "mixed", url: "https://pdga.com/worlds" },
         status: "idle"
       },
@@ -139,26 +293,8 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         type: "competition",
         label: "United States Disc Golf Championship (USDGC)",
         x: 780,
-        y: 240,
+        y: 260,
         data: { tier: 1, gender: "mixed", url: "https://usdgc.com" },
-        status: "idle"
-      },
-      {
-        id: "site_pdga_events",
-        type: "web_source",
-        label: "PDGA Sanctioned Events Directory",
-        x: 780,
-        y: 380,
-        data: { url: "https://pdga.com/tour/events", antibot: "none" },
-        status: "idle"
-      },
-      {
-        id: "cfg_pdga_scraper",
-        type: "scraper_config",
-        label: "PDGA Tour Feed Strategy",
-        x: 1120,
-        y: 380,
-        data: { depth: 3, use_healer: true },
         status: "idle"
       }
     ],
@@ -166,9 +302,7 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
       { id: "edg_1", source: "sport_disc_golf", target: "org_pdga", label: "governed by" },
       { id: "edg_2", source: "sport_disc_golf", target: "org_dgpt", label: "governed by" },
       { id: "edg_3", source: "org_pdga", target: "comp_pdga_worlds", label: "organizes" },
-      { id: "edg_4", source: "org_pdga", target: "comp_usdc", label: "sanctions" },
-      { id: "edg_5", source: "org_pdga", target: "site_pdga_events", label: "publishes" },
-      { id: "edg_6", source: "site_pdga_events", target: "cfg_pdga_scraper", label: "scrapes" }
+      { id: "edg_4", source: "org_pdga", target: "comp_usdc", label: "sanctions" }
     ]
   },
   {
@@ -193,7 +327,23 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         label: "USA Pickleball",
         x: 420,
         y: 100,
-        data: { acronym: "USAP", scope: "national", org_type: "governing_body", website_url: "https://usapickleball.org" },
+        data: {
+          acronym: "USAP",
+          scope: "national",
+          org_type: "governing_body",
+          website_url: "https://usapickleball.org",
+          sources: [
+            {
+              id: "src_usap_1",
+              label: "Sanctioned Tournaments Calendar",
+              url: "https://usapickleball.org/events",
+              antibot: "none",
+              depth: 2,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "idle"
       },
       {
@@ -202,7 +352,23 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         label: "PPA Tour (Carvana PPA Tour)",
         x: 420,
         y: 260,
-        data: { acronym: "PPA", scope: "international", org_type: "league", website_url: "https://ppatour.com" },
+        data: {
+          acronym: "PPA",
+          scope: "international",
+          org_type: "league",
+          website_url: "https://ppatour.com",
+          sources: [
+            {
+              id: "src_ppa_1",
+              label: "PPA Tour Schedule",
+              url: "https://ppatour.com/tournaments",
+              antibot: "playwright",
+              depth: 2,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "idle"
       },
       {
@@ -215,38 +381,28 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         status: "idle"
       },
       {
-        id: "site_ppa_schedule",
-        type: "web_source",
-        label: "PPA Tour Official Tournaments Schedule",
+        id: "comp_ppa_masters",
+        type: "competition",
+        label: "PPA The Masters",
         x: 780,
-        y: 260,
-        data: { url: "https://ppatour.com/tournaments", antibot: "cloud-flare" },
-        status: "idle"
-      },
-      {
-        id: "cfg_stealth_scraper",
-        type: "scraper_config",
-        label: "Cloudflare Stealth Crawl Engine",
-        x: 1120,
-        y: 260,
-        data: { depth: 2, use_healer: true },
+        y: 240,
+        data: { tier: 1, gender: "mixed", url: "https://ppatour.com/masters" },
         status: "idle"
       }
     ],
     edges: [
-      { id: "ep1", source: "sport_pickleball", target: "org_usap", label: "governed by" },
-      { id: "ep2", source: "sport_pickleball", target: "org_ppa", label: "governed by" },
-      { id: "ep3", source: "org_usap", target: "comp_ppa_nationals", label: "sanctions" },
-      { id: "ep4", source: "org_ppa", target: "site_ppa_schedule", label: "publishes" },
-      { id: "ep5", source: "site_ppa_schedule", target: "cfg_stealth_scraper", label: "scrapes" }
+      { id: "e_p1", source: "sport_pickleball", target: "org_usap", label: "governed by" },
+      { id: "e_p2", source: "sport_pickleball", target: "org_ppa", label: "governed by" },
+      { id: "e_p3", source: "org_usap", target: "comp_ppa_nationals", label: "sanctions" },
+      { id: "e_p4", source: "org_ppa", target: "comp_ppa_masters", label: "organizes" }
     ]
   },
   {
-    id: "spikeball",
-    name: "Roundnet / Spikeball",
-    category: "Team / Action Sports",
-    description: "USA Roundnet and European Roundnet Association with Tour Series events.",
-    badge: "Action",
+    id: "roundnet",
+    name: "Roundnet (Spikeball Community & Tour)",
+    category: "Lawn / Beach / Ball",
+    description: "USA Roundnet national association and Spikeball Tour Series.",
+    badge: "Emerging",
     nodes: [
       {
         id: "sport_roundnet",
@@ -254,7 +410,7 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         label: "Roundnet",
         x: 80,
         y: 180,
-        data: { category: "Action Sports", wikipedia_url: "https://en.wikipedia.org/wiki/Roundnet" },
+        data: { category: "Lawn Sports", wikipedia_url: "https://en.wikipedia.org/wiki/Roundnet" },
         status: "idle"
       },
       {
@@ -263,51 +419,38 @@ export const SPORT_TEMPLATES: SportTemplate[] = [
         label: "USA Roundnet",
         x: 420,
         y: 120,
-        data: { acronym: "USAR", scope: "national", org_type: "governing_body", website_url: "https://usaroundnet.org" },
+        data: {
+          acronym: "USAR",
+          scope: "national",
+          org_type: "governing_body",
+          website_url: "https://usaroundnet.org",
+          sources: [
+            {
+              id: "src_usar_1",
+              label: "Tournaments & Events Calendar",
+              url: "https://usaroundnet.org/tournaments",
+              antibot: "none",
+              depth: 2,
+              use_healer: true,
+              status: "idle"
+            }
+          ]
+        },
         status: "idle"
       },
       {
-        id: "comp_usar_nationals",
+        id: "comp_tour_finals",
         type: "competition",
         label: "USA Roundnet National Championship",
         x: 780,
         y: 120,
         data: { tier: 1, gender: "mixed", url: "https://usaroundnet.org/nationals" },
         status: "idle"
-      },
-      {
-        id: "site_roundnet_calendar",
-        type: "web_source",
-        label: "USA Roundnet Tour Schedule",
-        x: 780,
-        y: 280,
-        data: { url: "https://usaroundnet.org/events", antibot: "none" },
-        status: "idle"
       }
     ],
     edges: [
-      { id: "er1", source: "sport_roundnet", target: "org_usar", label: "governed by" },
-      { id: "er2", source: "org_usar", target: "comp_usar_nationals", label: "sanctions" },
-      { id: "er3", source: "org_usar", target: "site_roundnet_calendar", label: "publishes" }
+      { id: "e_r1", source: "sport_roundnet", target: "org_usar", label: "governed by" },
+      { id: "e_r2", source: "org_usar", target: "comp_tour_finals", label: "organizes" }
     ]
-  },
-  {
-    id: "blank",
-    name: "Blank Canvas",
-    category: "Custom",
-    description: "Clean canvas with a single unconfigured Sport Root node.",
-    badge: "Clean Slate",
-    nodes: [
-      {
-        id: "sport_root",
-        type: "sport",
-        label: "New Sport",
-        x: 150,
-        y: 200,
-        data: { category: "General", wikipedia_url: "" },
-        status: "idle"
-      }
-    ],
-    edges: []
   }
 ];

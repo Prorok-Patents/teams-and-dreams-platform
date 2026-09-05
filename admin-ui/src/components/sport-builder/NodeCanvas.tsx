@@ -32,6 +32,16 @@ import {
 
 export type NodeType = "sport" | "organization" | "competition" | "web_source" | "scraper_config";
 
+export interface WebSourceConfig {
+  id: string;
+  label?: string;
+  url: string;
+  antibot?: "none" | "cloud-flare" | "playwright";
+  depth?: number;
+  use_healer?: boolean;
+  status?: "idle" | "running" | "completed" | "failed";
+}
+
 export interface NodeData {
   id: string;
   type: NodeType;
@@ -766,6 +776,12 @@ export default function NodeCanvas({
 
           <div className="flex items-center gap-1.5">
             <button
+              onClick={() => onAddNode("sport")}
+              className="px-2.5 py-1 text-xs bg-purple-950/70 hover:bg-purple-900 border border-purple-800/80 text-purple-300 rounded-lg flex items-center gap-1 transition shadow-sm"
+            >
+              <Plus className="h-3 w-3" /> Sport
+            </button>
+            <button
               onClick={() => onAddNode("organization")}
               className="px-2.5 py-1 text-xs bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-800/80 text-emerald-300 rounded-lg flex items-center gap-1 transition shadow-sm"
             >
@@ -776,18 +792,6 @@ export default function NodeCanvas({
               className="px-2.5 py-1 text-xs bg-amber-950/70 hover:bg-amber-900 border border-amber-800/80 text-amber-300 rounded-lg flex items-center gap-1 transition shadow-sm"
             >
               <Plus className="h-3 w-3" /> Comp
-            </button>
-            <button
-              onClick={() => onAddNode("web_source")}
-              className="px-2.5 py-1 text-xs bg-sky-950/70 hover:bg-sky-900 border border-sky-800/80 text-sky-300 rounded-lg flex items-center gap-1 transition shadow-sm"
-            >
-              <Plus className="h-3 w-3" /> Source
-            </button>
-            <button
-              onClick={() => onAddNode("scraper_config")}
-              className="px-2.5 py-1 text-xs bg-rose-950/70 hover:bg-rose-900 border border-rose-800/80 text-rose-300 rounded-lg flex items-center gap-1 transition shadow-sm"
-            >
-              <Plus className="h-3 w-3" /> Scraper
             </button>
           </div>
 
@@ -1393,6 +1397,45 @@ export default function NodeCanvas({
                     {tier !== null && (
                       <div className="text-[10px] text-amber-400">Tier {tier}</div>
                     )}
+
+                    {/* Embedded Sources & Scraper Badges */}
+                    {(node.type === "organization" || node.type === "competition") && (() => {
+                      const nodeSources = Array.isArray(node.data.sources) ? (node.data.sources as WebSourceConfig[]) : [];
+                      const sourceCount = nodeSources.length;
+                      const hasHealer = nodeSources.some(s => s.use_healer !== false);
+
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1.5 mt-1 border-t border-slate-800/80 text-[10px]">
+                          {sourceCount > 0 ? (
+                            <span
+                              title={`${sourceCount} target scraper source${sourceCount > 1 ? "s" : ""} configured`}
+                              className="px-2 py-0.5 rounded-full bg-sky-950/80 border border-sky-800/80 text-sky-300 font-mono flex items-center gap-1"
+                            >
+                              <Globe className="h-2.5 w-2.5 text-sky-400" />
+                              {sourceCount} {sourceCount === 1 ? "Source" : "Sources"}
+                            </span>
+                          ) : (
+                            <span
+                              title="Click to configure target event scraper URLs"
+                              className="px-2 py-0.5 rounded-full bg-slate-900/60 border border-dashed border-slate-700 text-slate-400 font-mono flex items-center gap-1"
+                            >
+                              <Globe className="h-2.5 w-2.5 text-slate-500" />
+                              0 Sources
+                            </span>
+                          )}
+
+                          {hasHealer && sourceCount > 0 && (
+                            <span
+                              title="LLM Auto-Healer Enabled"
+                              className="px-1.5 py-0.5 rounded-full bg-rose-950/80 border border-rose-800/80 text-rose-300 font-mono flex items-center gap-1"
+                            >
+                              <Zap className="h-2.5 w-2.5 text-rose-400" />
+                              Healer
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );

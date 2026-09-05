@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
-import NodeCanvas, { NodeData, EdgeData } from "./NodeCanvas";
+import NodeCanvas, { NodeData, EdgeData, WebSourceConfig } from "./NodeCanvas";
 import NodeInspector from "./NodeInspector";
 import FormBuilder from "./FormBuilder";
 import SportSelectorModal from "./SportSelectorModal";
@@ -11,7 +11,7 @@ import NodeFilterBar, { FilterMode } from "./NodeFilterBar";
 import ExportImportModal from "./ExportImportModal";
 import DiagnosticsDrawer from "./DiagnosticsDrawer";
 import { runGraphDiagnostics, DiagnosticItem } from "./graphDiagnostics";
-import { SPORT_TEMPLATES } from "./templates";
+import { SPORT_TEMPLATES, normalizeGraph } from "./templates";
 import {
   Network,
   Play,
@@ -25,7 +25,11 @@ import {
   ShieldCheck,
   PanelRightClose,
   PanelRightOpen,
-  Terminal
+  Terminal,
+  Paperclip,
+  FileText,
+  Loader2,
+  X
 } from "lucide-react";
 
 /** Stable-keyed log entry for React reconciliation */
@@ -56,13 +60,14 @@ export default function SportBuilderStudio() {
 
   // Initial Nodes & Edges (Default: Curling Olympic standard)
   const defaultTemplate = SPORT_TEMPLATES[0];
-  const [nodes, setNodes] = useState<NodeData[]>(defaultTemplate.nodes);
-  const [edges, setEdges] = useState<EdgeData[]>(defaultTemplate.edges);
+  const initialNormalized = normalizeGraph(defaultTemplate.nodes, defaultTemplate.edges);
+  const [nodes, setNodes] = useState<NodeData[]>(initialNormalized.nodes);
+  const [edges, setEdges] = useState<EdgeData[]>(initialNormalized.edges);
   const [currentSportBadge, setCurrentSportBadge] = useState<string>("Curling");
 
   // Undo / Redo History Stack
   const [history, setHistory] = useState<HistorySnapshot[]>([
-    { nodes: defaultTemplate.nodes, edges: defaultTemplate.edges }
+    { nodes: initialNormalized.nodes, edges: initialNormalized.edges }
   ]);
   const [historyIndex, setHistoryIndex] = useState(0);
 
@@ -167,12 +172,13 @@ export default function SportBuilderStudio() {
   const handleLoadTemplate = (templateId: string) => {
     const tmpl = SPORT_TEMPLATES.find(t => t.id === templateId);
     if (!tmpl) return;
-    setNodes(tmpl.nodes);
-    setEdges(tmpl.edges);
+    const normalized = normalizeGraph(tmpl.nodes, tmpl.edges);
+    setNodes(normalized.nodes);
+    setEdges(normalized.edges);
     setCurrentSportBadge(tmpl.name.split(" ")[0]);
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
-    pushHistory(tmpl.nodes, tmpl.edges);
+    pushHistory(normalized.nodes, normalized.edges);
   };
 
   const handleLoadSport = async (sportId: string, sportName: string) => {
@@ -203,24 +209,26 @@ export default function SportBuilderStudio() {
         label: String(e.label || "connects")
       }));
 
-      setNodes(sanitizedNodes);
-      setEdges(sanitizedEdges);
+      const normalized = normalizeGraph(sanitizedNodes, sanitizedEdges);
+      setNodes(normalized.nodes);
+      setEdges(normalized.edges);
       setCurrentSportBadge(sportName);
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
-      pushHistory(sanitizedNodes, sanitizedEdges);
+      pushHistory(normalized.nodes, normalized.edges);
     } catch (err) {
       console.error("Error loading sport graph:", err);
     }
   };
 
   const handleImportGraph = (importedNodes: NodeData[], importedEdges: EdgeData[], importedSportName?: string) => {
-    setNodes(importedNodes);
-    setEdges(importedEdges);
+    const normalized = normalizeGraph(importedNodes, importedEdges);
+    setNodes(normalized.nodes);
+    setEdges(normalized.edges);
     if (importedSportName) setCurrentSportBadge(importedSportName);
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
-    pushHistory(importedNodes, importedEdges);
+    pushHistory(normalized.nodes, normalized.edges);
   };
 
   // Node Actions
@@ -413,13 +421,29 @@ export default function SportBuilderStudio() {
           orgs.forEach((org, idx) => {
             const orgName = typeof org === "string" ? org : String(org?.name || `Organization ${idx + 1}`);
             const orgId = `org_${crypto.randomUUID()}`;
+            const orgData: Record<string, unknown> = typeof org === "object" && org !== null ? { ...org } : {};
+
+            const sources: WebSourceConfig[] = Array.isArray(orgData.sources) ? [...(orgData.sources as WebSourceConfig[])] : [];
+            if (sources.length === 0 && orgData.website_url && typeof orgData.website_url === "string") {
+              sources.push({
+                id: `src_${crypto.randomUUID().slice(0, 8)}`,
+                label: `${orgName} Official Web`,
+                url: orgData.website_url,
+                antibot: "none",
+                depth: 2,
+                use_healer: true,
+                status: "idle"
+              });
+            }
+            orgData.sources = sources;
+
             newOrgNodes.push({
               id: orgId,
               type: "organization",
               label: orgName,
               x: 450,
               y: 100 + idx * 140,
-              data: typeof org === "object" && org !== null ? org : {}
+              data: orgData
             });
             newEdges.push({
               id: `edge_${crypto.randomUUID()}`,
@@ -455,13 +479,36 @@ export default function SportBuilderStudio() {
             labelToIdMap.set(label.toLowerCase(), nodeId);
             labelToIdMap.set(nodeId.toLowerCase(), nodeId);
 
+            const nodeData: Record<string, unknown> = typeof n.data === "object" && n.data !== null ? { ...n.data } : {};
+            if (Array.isArray(nodeData.sources)) {
+              nodeData.sources = (nodeData.sources as Record<string, unknown>[]).map((s, sIdx: number) => ({
+                id: typeof s.id === "string" ? s.id : `src_${crypto.randomUUID().slice(0, 8)}`,
+                label: typeof s.label === "string" ? s.label : `Source ${sIdx + 1}`,
+                url: typeof s.url === "string" ? s.url : "",
+                antibot: typeof s.antibot === "string" && ["none", "cloud-flare", "playwright"].includes(s.antibot) ? (s.antibot as WebSourceConfig["antibot"]) : "none",
+                depth: typeof s.depth === "number" ? s.depth : 2,
+                use_healer: s.use_healer !== false,
+                status: "idle"
+              }));
+            } else if (nodeData.website_url && typeof nodeData.website_url === "string" && (nodeType === "organization" || nodeType === "competition")) {
+              nodeData.sources = [{
+                id: `src_${crypto.randomUUID().slice(0, 8)}`,
+                label: `${label} Calendar/Events`,
+                url: nodeData.website_url,
+                antibot: "none",
+                depth: 2,
+                use_healer: true,
+                status: "idle"
+              }];
+            }
+
             createdNodes.push({
               id: nodeId,
               type: nodeType,
               label,
               x: 350 + (idx % 3) * 240,
               y: 120 + Math.floor(idx / 3) * 160,
-              data: typeof n.data === "object" && n.data !== null ? (n.data as Record<string, unknown>) : {}
+              data: nodeData
             });
           });
 
@@ -510,12 +557,67 @@ export default function SportBuilderStudio() {
   }, [chat?.messages, nodes, edges, pushHistory]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // Document Ingestion State
+  const [attachedDoc, setAttachedDoc] = useState<{
+    name: string;
+    size: number;
+    text: string;
+    pageCount?: number;
+  } | null>(null);
+  const [isParsingDoc, setIsParsingDoc] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsingDoc(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/parse-document", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to parse document");
+      }
+
+      const data = await res.json();
+      setAttachedDoc({
+        name: data.filename || file.name,
+        size: file.size,
+        text: data.text || "",
+        pageCount: data.pageCount
+      });
+      setAssistantTab("chat");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Error parsing document: ${msg}`);
+    } finally {
+      setIsParsingDoc(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const handleSendChat = (textToSend?: string) => {
-    const text = (textToSend || chatInput).trim();
-    if (!text || isLoading) return;
+    let text = (textToSend || chatInput).trim();
+    if ((!text && !attachedDoc) || isLoading) return;
+
+    if (attachedDoc) {
+      const docHeader = `[Attached Document: "${attachedDoc.name}" (${attachedDoc.pageCount ? `${attachedDoc.pageCount} pages, ` : ''}${Math.round(attachedDoc.text.length / 1000)}k chars)]\n${attachedDoc.text}\n\n`;
+      text = text ? `${docHeader}User Instructions: ${text}` : `${docHeader}Please ingest this document and construct the sport, organizations, competitions, and embedded scraper source nodes on the canvas.`;
+      setAttachedDoc(null);
+    }
+
     setChatInput("");
     if (typeof chat?.sendMessage === "function") {
       (chat.sendMessage as (msg: { text: string }) => void)({ text });
+    } else if (typeof chat?.append === "function") {
+      (chat.append as (msg: { role: string; content: string }) => void)({ role: "user", content: text });
     }
   };
 
@@ -822,28 +924,70 @@ export default function SportBuilderStudio() {
 
                   {/* Chat Input */}
                   <div className="p-3 border-t border-[#1E293B] bg-[#070A14]">
+                    {attachedDoc && (
+                      <div className="mb-2 p-2 rounded-xl bg-sky-950/60 border border-sky-800 flex items-center justify-between gap-2 text-xs animate-in fade-in">
+                        <div className="flex items-center gap-2 text-sky-200 truncate font-mono text-[11px]">
+                          <FileText className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+                          <span className="truncate">{attachedDoc.name}</span>
+                          <span className="text-[10px] text-sky-400/70 shrink-0">
+                            ({attachedDoc.pageCount ? `${attachedDoc.pageCount} pgs` : `${Math.round(attachedDoc.size / 1024)} KB`})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAttachedDoc(null)}
+                          className="p-0.5 text-slate-400 hover:text-white rounded"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+
                     <form
                       onSubmit={e => {
                         e.preventDefault();
                         handleSendChat();
                       }}
-                      className="relative flex items-center"
+                      className="relative flex items-center gap-1.5"
                     >
                       <input
-                        type="text"
-                        value={chatInput}
-                        onChange={e => setChatInput(e.target.value)}
-                        disabled={isLoading}
-                        placeholder="Instruct Intake Copilot..."
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf,.txt,.csv,.md,.json"
+                        className="hidden"
+                        onChange={handleFileSelect}
                       />
                       <button
-                        type="submit"
-                        disabled={isLoading || !chatInput.trim()}
-                        className="absolute right-2 p-1.5 bg-sky-500 text-white rounded-lg hover:bg-sky-400 disabled:opacity-50 transition"
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isLoading || isParsingDoc}
+                        title="Upload PDF, TXT, CSV, or MD document"
+                        className="p-2 text-slate-400 hover:text-sky-400 hover:bg-slate-900 border border-slate-800 rounded-xl transition shrink-0"
                       >
-                        <Send className="h-3.5 w-3.5" />
+                        {isParsingDoc ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+                        ) : (
+                          <Paperclip className="h-4 w-4" />
+                        )}
                       </button>
+
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={e => setChatInput(e.target.value)}
+                          disabled={isLoading}
+                          placeholder={attachedDoc ? "Add instruction (or press Enter)..." : "Instruct Copilot or paste list..."}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isLoading || (!chatInput.trim() && !attachedDoc)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-sky-500 text-white rounded-lg hover:bg-sky-400 disabled:opacity-50 transition"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </form>
                   </div>
                 </div>

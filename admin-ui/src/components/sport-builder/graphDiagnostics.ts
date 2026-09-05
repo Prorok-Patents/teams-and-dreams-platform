@@ -1,4 +1,4 @@
-import { NodeData, EdgeData } from "./NodeCanvas";
+import { NodeData, EdgeData, WebSourceConfig } from "./NodeCanvas";
 
 export type DiagnosticSeverity = "error" | "warning" | "info";
 
@@ -71,52 +71,86 @@ export function runGraphDiagnostics(nodes: NodeData[], edges: EdgeData[]): Graph
     }
   });
 
-  // 3. Web Sources & Scrapers Validation
+  // 3. Embedded Web Sources & Scraper Validation (and legacy standalone nodes)
+  const orgNodes = nodes.filter(n => n.type === "organization");
+  const compNodes = nodes.filter(n => n.type === "competition");
   const webSourceNodes = nodes.filter(n => n.type === "web_source");
   const scraperConfigNodes = nodes.filter(n => n.type === "scraper_config");
 
-  webSourceNodes.forEach(site => {
-    const url = typeof site.data.url === "string" ? site.data.url.trim() : "";
-    if (!url) {
+  // Validate embedded sources on organizations
+  orgNodes.forEach(org => {
+    const sources = Array.isArray(org.data.sources) ? (org.data.sources as WebSourceConfig[]) : [];
+    if (sources.length === 0 && !org.data.website_url) {
       items.push({
-        id: `diag_nourl_${site.id}`,
-        severity: "warning",
-        title: `Empty Target URL for "${site.label}"`,
-        message: "Web Source has no target URL configured for crawling.",
-        nodeId: site.id
-      });
-    } else if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      items.push({
-        id: `diag_badurl_${site.id}`,
-        severity: "warning",
-        title: `Invalid URL Format: "${site.label}"`,
-        message: `URL "${url}" does not include http:// or https:// protocol.`,
-        nodeId: site.id
+        id: `diag_nosources_${org.id}`,
+        severity: "info",
+        title: `No Scraper Sources: "${org.label}"`,
+        message: "Organization has no event calendar or website sources attached. Configure a target URL in the node inspector.",
+        nodeId: org.id
       });
     }
+
+    sources.forEach((src, idx) => {
+      const url = typeof src.url === "string" ? src.url.trim() : "";
+      if (!url) {
+        items.push({
+          id: `diag_emptysrc_${org.id}_${idx}`,
+          severity: "warning",
+          title: `Empty Source URL in "${org.label}"`,
+          message: `Source #${idx + 1} "${src.label || "Unnamed"}" has no URL configured.`,
+          nodeId: org.id
+        });
+      } else if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        items.push({
+          id: `diag_badsrc_${org.id}_${idx}`,
+          severity: "warning",
+          title: `Invalid URL Format: "${org.label}"`,
+          message: `Source #${idx + 1} URL "${url}" must include http:// or https://.`,
+          nodeId: org.id
+        });
+      }
+    });
+  });
+
+  // Validate embedded sources on competitions
+  compNodes.forEach(comp => {
+    const sources = Array.isArray(comp.data.sources) ? (comp.data.sources as WebSourceConfig[]) : [];
+    sources.forEach((src, idx) => {
+      const url = typeof src.url === "string" ? src.url.trim() : "";
+      if (url && !url.startsWith("http://") && !url.startsWith("https://")) {
+        items.push({
+          id: `diag_badcomp_src_${comp.id}_${idx}`,
+          severity: "warning",
+          title: `Invalid Competition Source URL: "${comp.label}"`,
+          message: `Source URL "${url}" must include http:// or https://.`,
+          nodeId: comp.id
+        });
+      }
+    });
+  });
+
+  // Check for any legacy standalone nodes
+  webSourceNodes.forEach(site => {
+    items.push({
+      id: `diag_legacy_site_${site.id}`,
+      severity: "info",
+      title: `Legacy Web Source Node: "${site.label}"`,
+      message: "This node can be embedded directly into its parent Organization node.",
+      nodeId: site.id
+    });
   });
 
   scraperConfigNodes.forEach(scraper => {
-    const connectedEdges = edges.filter(e => e.source === scraper.id || e.target === scraper.id);
-    const hasWebSourceLink = connectedEdges.some(e => {
-      const otherId = e.source === scraper.id ? e.target : e.source;
-      const otherNode = nodes.find(n => n.id === otherId);
-      return otherNode?.type === "web_source";
+    items.push({
+      id: `diag_legacy_scraper_${scraper.id}`,
+      severity: "info",
+      title: `Legacy Scraper Strategy Node: "${scraper.label}"`,
+      message: "Scraper strategy can be configured directly inside the parent Organization node.",
+      nodeId: scraper.id
     });
-
-    if (!hasWebSourceLink) {
-      items.push({
-        id: `diag_unlinked_scraper_${scraper.id}`,
-        severity: "info",
-        title: `Unlinked Scraper Strategy: "${scraper.label}"`,
-        message: "Scraper strategy is not connected to any Web Source node.",
-        nodeId: scraper.id
-      });
-    }
   });
 
   // 4. Organization checks
-  const orgNodes = nodes.filter(n => n.type === "organization");
   if (sportNodes.length > 0 && orgNodes.length === 0) {
     items.push({
       id: "diag_no_orgs",

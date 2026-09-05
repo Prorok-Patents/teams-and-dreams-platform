@@ -5,19 +5,16 @@ import Link from "next/link";
 import {
   Network,
   Globe,
-  ExternalLink,
   ChevronRight,
   Layers,
   RefreshCw,
   Info,
-  MapPin,
   Calendar,
   Users,
   FileText,
   Trophy,
   BarChart3,
   Settings,
-  Shield,
   Zap,
   Search,
   Eye,
@@ -28,15 +25,9 @@ import {
   BookOpen,
   Play,
   ArrowRight,
-  Table as TableIcon,
   Kanban,
   Bot,
-  Hash,
-  Crosshair,
   XCircle,
-  BarChart2,
-  Database,
-  Activity,
   FolderTree,
   Plus,
   X,
@@ -910,13 +901,13 @@ function LiveLogModal({
   siteId: string;
   onClose: () => void;
 }) {
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<string[]>(() =>
+    runId ? [`$ Initializing scraper execution for ${siteId}...`, `[INFO] Assigned Run ID: ${runId}`] : []
+  );
   const [status, setStatus] = useState<string>("running");
 
   useEffect(() => {
     if (!runId) return;
-
-    setLogs([`$ Initializing scraper execution for ${siteId}...`, `[INFO] Assigned Run ID: ${runId}`]);
 
     const interval = setInterval(async () => {
       try {
@@ -934,7 +925,7 @@ function LiveLogModal({
             ]);
           }
         }
-      } catch (e) {
+      } catch {
         // Fallback simulated logs for demo preview if API server offline
         setLogs((prev) => [
           ...prev,
@@ -945,7 +936,7 @@ function LiveLogModal({
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [runId, siteId]);
+  }, [runId]);
 
   if (!runId) return null;
 
@@ -989,6 +980,57 @@ function LiveLogModal({
   );
 }
 
+interface ScraperProfileBackendRecord {
+  site_id: string;
+  base_url?: string;
+  org_name?: string;
+  site_type?: SiteKnowledge["site_type"];
+  sport?: string;
+  sport_name?: string;
+  strategy?: SiteKnowledge["strategy"];
+  proxy_tier?: SiteKnowledge["proxy_tier"];
+  pipeline_stage?: PipelineStage;
+  page_types?: Array<PageTypeNode | string>;
+  page_flows?: PageFlow[];
+  selectors?: Record<string, string>;
+  notes?: string;
+}
+
+function StagePanel({
+  site,
+  onAdvance,
+  onRunScraper,
+}: {
+  site: SiteKnowledge;
+  onAdvance: (siteId: string, stage: PipelineStage) => void;
+  onRunScraper: (siteId: string) => void;
+}) {
+  switch (site.pipeline_stage) {
+    case "discover":
+      return <DiscoverPanel site={site} onAdvance={(stage) => onAdvance(site.site_id, stage)} />;
+    case "map":
+      return <MapPanel site={site} onAdvance={(stage) => onAdvance(site.site_id, stage)} />;
+    case "configure":
+      return (
+        <ConfigurePanel
+          site={site}
+          onAdvance={(stage) => onAdvance(site.site_id, stage)}
+          onRunScraper={() => onRunScraper(site.site_id)}
+        />
+      );
+    case "scrape":
+      return (
+        <ScrapePanel
+          site={site}
+          onRunScraper={() => onRunScraper(site.site_id)}
+          onAdvance={(stage) => onAdvance(site.site_id, stage)}
+        />
+      );
+    case "verify":
+      return <VerifyPanel site={site} />;
+  }
+}
+
 // ============================================================================
 // MAIN PAGE COMPONENT
 // ============================================================================
@@ -999,8 +1041,8 @@ export default function Home() {
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterSport, setFilterSport] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"pipeline" | "table">("pipeline");
+  const [filterSport] = useState<string>("all");
+  const [viewMode] = useState<"pipeline" | "table">("pipeline");
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -1017,24 +1059,43 @@ export default function Home() {
             // merge backend profiles into sites
             setSites((prev) => {
               const existingIds = new Set(prev.map((s) => s.site_id));
-              const newProfiles: SiteKnowledge[] = profiles.map((p: any) => ({
-                site_id: p.site_id,
-                base_url: p.base_url || `https://${p.site_id}.org`,
-                org_name: p.org_name || p.site_id,
-                site_type: p.site_type || "governing_body",
-                sport: p.sport || p.sport_name || "curling",
-                strategy: p.strategy || "playwright",
-                proxy_tier: p.proxy_tier || "residential",
-                pipeline_stage: p.pipeline_stage || "discover",
-                page_types: p.page_types || [],
-                page_flows: p.page_flows || [],
-                selectors: p.selectors || {},
-                notes: p.notes || "",
-                last_mapped_at: new Date().toISOString(),
-                has_events: true,
-                has_members: false,
-                has_results: false,
-              }));
+              const newProfiles: SiteKnowledge[] = profiles.map((p: ScraperProfileBackendRecord) => {
+                const mappedPageTypes: PageTypeNode[] = (p.page_types || []).map((pt, idx) => {
+                  if (typeof pt === "object" && pt !== null && "id" in pt) {
+                    return pt as PageTypeNode;
+                  }
+                  const name = String(pt || "page");
+                  return {
+                    id: `${p.site_id}_pt_${idx}`,
+                    type: name,
+                    label: name.replace(/_/g, " "),
+                    url_pattern: `/*`,
+                    example_url: p.base_url || "",
+                    description: `${name} page`,
+                    status: "discovered" as const,
+                    is_scrapeable: true,
+                  };
+                });
+
+                return {
+                  site_id: p.site_id,
+                  base_url: p.base_url || `https://${p.site_id}.org`,
+                  org_name: p.org_name || p.site_id,
+                  site_type: p.site_type || "governing_body",
+                  sport: p.sport || p.sport_name || "curling",
+                  strategy: p.strategy || "playwright",
+                  proxy_tier: p.proxy_tier || "residential",
+                  pipeline_stage: p.pipeline_stage || "discover",
+                  page_types: mappedPageTypes,
+                  page_flows: p.page_flows || [],
+                  selectors: p.selectors || {},
+                  notes: p.notes || "",
+                  last_mapped_at: new Date().toISOString(),
+                  has_events: true,
+                  has_members: false,
+                  has_results: false,
+                };
+              });
 
               const merged = [...prev];
               newProfiles.forEach((np) => {
@@ -1105,7 +1166,7 @@ export default function Home() {
         const data = await res.json();
         if (data.run_id) runId = data.run_id;
       }
-    } catch (e) {
+    } catch {
       console.warn("Using generated run ID:", runId);
     }
     setActiveRunId(runId);
@@ -1118,33 +1179,6 @@ export default function Home() {
       )
     );
   };
-
-  function renderStagePanel(site: SiteKnowledge) {
-    switch (site.pipeline_stage) {
-      case "discover":
-        return <DiscoverPanel site={site} onAdvance={(stage) => handleStageAdvance(site.site_id, stage)} />;
-      case "map":
-        return <MapPanel site={site} onAdvance={(stage) => handleStageAdvance(site.site_id, stage)} />;
-      case "configure":
-        return (
-          <ConfigurePanel
-            site={site}
-            onAdvance={(stage) => handleStageAdvance(site.site_id, stage)}
-            onRunScraper={() => handleRunScraper(site.site_id)}
-          />
-        );
-      case "scrape":
-        return (
-          <ScrapePanel
-            site={site}
-            onRunScraper={() => handleRunScraper(site.site_id)}
-            onAdvance={(stage) => handleStageAdvance(site.site_id, stage)}
-          />
-        );
-      case "verify":
-        return <VerifyPanel site={site} />;
-    }
-  }
 
   return (
     <main className="flex-1 bg-[#090D1A] text-slate-100 flex overflow-hidden font-sans h-screen">
@@ -1380,7 +1414,7 @@ export default function Home() {
                 </div>
               </div>
               <hr className="border-slate-800 mb-6" />
-              {renderStagePanel(selectedSite)}
+              <StagePanel site={selectedSite} onAdvance={handleStageAdvance} onRunScraper={handleRunScraper} />
             </div>
           ) : null}
         </div>
@@ -1409,7 +1443,7 @@ export default function Home() {
                 onStageClick={(stage) => handleStageAdvance(selectedSite.site_id, stage)}
               />
             </div>
-            {renderStagePanel(selectedSite)}
+            <StagePanel site={selectedSite} onAdvance={handleStageAdvance} onRunScraper={handleRunScraper} />
           </div>
         </div>
       )}

@@ -115,14 +115,18 @@ async def trigger_discovery(request: DiscoveryRunRequest, background_tasks: Back
             
             # Extract orgs from graph_nodes if provided
             if request.graph_nodes:
-                for n in request.graph_nodes:
                     if n.type == "organization":
+                        sources = n.data.get("sources", [])
+                        primary_url = n.data.get("website_url")
+                        if not primary_url and sources and isinstance(sources, list) and len(sources) > 0:
+                            primary_url = sources[0].get("url")
                         formatted_orgs.append({
                             "name": n.label,
                             "acronym": n.data.get("acronym"),
                             "scope": n.data.get("scope", "international"),
                             "org_type": n.data.get("org_type", "governing_body"),
-                            "website_url": n.data.get("website_url")
+                            "website_url": primary_url,
+                            "sources": sources
                         })
             
             # Also append major_orgs if explicitly provided

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { NodeData, EdgeData } from "./NodeCanvas";
+import { NodeData, EdgeData, WebSourceConfig } from "./NodeCanvas";
 import {
   X,
   Sliders,
@@ -13,7 +13,9 @@ import {
   AlertTriangle,
   ArrowRight,
   Plus,
-  Compass
+  Compass,
+  Globe,
+  Zap
 } from "lucide-react";
 
 interface NodeInspectorProps {
@@ -140,6 +142,39 @@ export default function NodeInspector({
   const depthVal = typeof node.data.depth === "number" ? node.data.depth : 2;
   const healerVal = typeof node.data.use_healer === "boolean" ? node.data.use_healer : true;
 
+  // Embedded Web Sources list
+  const sourcesVal: WebSourceConfig[] = Array.isArray(node.data.sources)
+    ? (node.data.sources as WebSourceConfig[])
+    : [];
+
+  const handleAddSource = () => {
+    const newSrc: WebSourceConfig = {
+      id: `src_${crypto.randomUUID().slice(0, 8)}`,
+      label: `Endpoint ${sourcesVal.length + 1}`,
+      url: "",
+      antibot: "none",
+      depth: 2,
+      use_healer: true,
+      status: "idle"
+    };
+    handleChangeField("sources", [...sourcesVal, newSrc]);
+  };
+
+  const handleUpdateSource = (index: number, key: keyof WebSourceConfig, val: unknown) => {
+    const updated = sourcesVal.map((s, i) => {
+      if (i === index) {
+        return { ...s, [key]: val };
+      }
+      return s;
+    });
+    handleChangeField("sources", updated);
+  };
+
+  const handleRemoveSource = (index: number) => {
+    const updated = sourcesVal.filter((_, i) => i !== index);
+    handleChangeField("sources", updated);
+  };
+
   // Custom attributes (excluding common fields)
   const commonFields = new Set([
     "category",
@@ -153,7 +188,8 @@ export default function NodeInspector({
     "url",
     "antibot",
     "depth",
-    "use_healer"
+    "use_healer",
+    "sources"
   ]);
 
   const customEntries = Object.entries(node.data).filter(([k]) => !commonFields.has(k));
@@ -386,6 +422,112 @@ export default function NodeInspector({
                   />
                 </div>
               </>
+            )}
+
+            {/* Embedded Web Sources & Scraper Strategies for Organization & Competition */}
+            {(node.type === "organization" || node.type === "competition") && (
+              <div className="pt-3 border-t border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+                    <Globe className="h-3.5 w-3.5 text-sky-400" />
+                    <span>Target Web Sources ({sourcesVal.length})</span>
+                  </div>
+                  <button
+                    onClick={handleAddSource}
+                    className="px-2 py-1 bg-sky-950 hover:bg-sky-900 border border-sky-800 text-sky-300 rounded text-[10px] font-medium flex items-center gap-1 transition"
+                  >
+                    <Plus className="h-3 w-3" /> Add Source
+                  </button>
+                </div>
+
+                {sourcesVal.length === 0 ? (
+                  <div className="p-3 bg-slate-900/60 border border-dashed border-slate-800 rounded-xl text-center space-y-2 text-xs text-slate-500">
+                    <p className="text-[11px]">No target calendar or event URLs attached yet.</p>
+                    <button
+                      onClick={handleAddSource}
+                      className="px-2.5 py-1 bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/60 text-sky-300 rounded-lg text-[11px] font-medium inline-flex items-center gap-1 transition"
+                    >
+                      <Plus className="h-3 w-3" /> Add Target URL &amp; Scraper
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sourcesVal.map((src, idx) => (
+                      <div
+                        key={src.id || idx}
+                        className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl space-y-2 hover:border-slate-700 transition"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <input
+                            type="text"
+                            value={src.label || ""}
+                            onChange={e => handleUpdateSource(idx, "label", e.target.value)}
+                            placeholder="e.g. Official Calendar"
+                            className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200 font-medium w-full focus:outline-none focus:border-sky-500"
+                          />
+                          <button
+                            onClick={() => handleRemoveSource(idx)}
+                            className="p-1 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded transition"
+                            title="Remove Source"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-0.5">Target Scrape URL</label>
+                          <input
+                            type="text"
+                            value={src.url || ""}
+                            onChange={e => handleUpdateSource(idx, "url", e.target.value)}
+                            placeholder="https://..."
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200 font-mono focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-0.5">Anti-Bot Level</label>
+                            <select
+                              value={src.antibot || "none"}
+                              onChange={e => handleUpdateSource(idx, "antibot", e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-[10px] text-slate-300 font-mono"
+                            >
+                              <option value="none">Standard HTTP</option>
+                              <option value="cloud-flare">Cloudflare / Stealth</option>
+                              <option value="playwright">Playwright Chrome</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-0.5">Crawl Depth</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={5}
+                              value={src.depth ?? 2}
+                              onChange={e => handleUpdateSource(idx, "depth", parseNumberInput(e.target.value, 2))}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-800/60">
+                          <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                            <Zap className="h-3 w-3 text-rose-400" /> LLM Auto-Healer
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={src.use_healer !== false}
+                            onChange={e => handleUpdateSource(idx, "use_healer", e.target.checked)}
+                            className="h-3.5 w-3.5 rounded accent-sky-500"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {node.type === "web_source" && (

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useCallback } from "react";
-import { NodeData, EdgeData } from "./NodeCanvas";
+import { NodeData, EdgeData, WebSourceConfig } from "./NodeCanvas";
 import {
   Building2,
   Swords,
@@ -168,13 +168,42 @@ export default function FormBuilder({
   const updateNodeData = (id: string, field: string, value: unknown) => {
     onUpdateNodes(
       nodes.map(n => {
-        if (n.id === id) {
-          if (field === "label") return { ...n, label: String(value) };
-          return { ...n, data: { ...n.data, [field]: value } };
-        }
-        return n;
+        if (n.id !== id) return n;
+        if (field === "label") return { ...n, label: String(value) };
+        return { ...n, data: { ...n.data, [field]: value } };
       })
     );
+  };
+
+  const handleAddOrgSource = (orgId: string) => {
+    const org = nodes.find(n => n.id === orgId);
+    if (!org) return;
+    const currentSources: WebSourceConfig[] = Array.isArray(org.data.sources) ? [...(org.data.sources as WebSourceConfig[])] : [];
+    currentSources.push({
+      id: `src_${crypto.randomUUID().slice(0, 8)}`,
+      label: `Target Source ${currentSources.length + 1}`,
+      url: "",
+      antibot: "none",
+      depth: 2,
+      use_healer: true
+    });
+    updateNodeData(orgId, "sources", currentSources);
+  };
+
+  const handleUpdateOrgSource = (orgId: string, srcIndex: number, field: keyof WebSourceConfig, val: unknown) => {
+    const org = nodes.find(n => n.id === orgId);
+    if (!org) return;
+    const currentSources: WebSourceConfig[] = Array.isArray(org.data.sources) ? [...(org.data.sources as WebSourceConfig[])] : [];
+    currentSources[srcIndex] = { ...currentSources[srcIndex], [field]: val };
+    updateNodeData(orgId, "sources", currentSources);
+  };
+
+  const handleRemoveOrgSource = (orgId: string, srcIndex: number) => {
+    const org = nodes.find(n => n.id === orgId);
+    if (!org) return;
+    const currentSources: WebSourceConfig[] = Array.isArray(org.data.sources) ? [...(org.data.sources as WebSourceConfig[])] : [];
+    currentSources.splice(srcIndex, 1);
+    updateNodeData(orgId, "sources", currentSources);
   };
 
   const handleAddEdge = () => {
@@ -383,59 +412,146 @@ export default function FormBuilder({
               {filteredOrgs.map((org) => (
                 <div
                   key={org.id}
-                  className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl flex items-center gap-3 hover:border-slate-700 transition"
+                  className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl flex flex-col gap-3 hover:border-slate-700 transition"
                 >
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-2.5">
-                    <input
-                      type="text"
-                      value={org.label}
-                      onChange={e => updateNodeData(org.id, "label", e.target.value)}
-                      placeholder="Organization Name"
-                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100"
-                    />
-                    <input
-                      type="text"
-                      value={String(org.data.acronym || "")}
-                      onChange={e => updateNodeData(org.id, "acronym", e.target.value)}
-                      placeholder="Acronym (e.g. WCF)"
-                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono"
-                    />
-                    <select
-                      value={String(org.data.scope || "international")}
-                      onChange={e => updateNodeData(org.id, "scope", e.target.value)}
-                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100"
-                    >
-                      <option value="international">International</option>
-                      <option value="national">National</option>
-                      <option value="regional">Regional</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={String(org.data.website_url || "")}
-                      onChange={e => updateNodeData(org.id, "website_url", e.target.value)}
-                      placeholder="Website URL"
-                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono"
-                    />
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-2.5">
+                      <input
+                        type="text"
+                        value={org.label}
+                        onChange={e => updateNodeData(org.id, "label", e.target.value)}
+                        placeholder="Organization Name"
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100"
+                      />
+                      <input
+                        type="text"
+                        value={String(org.data.acronym || "")}
+                        onChange={e => updateNodeData(org.id, "acronym", e.target.value)}
+                        placeholder="Acronym (e.g. WCF)"
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono"
+                      />
+                      <select
+                        value={String(org.data.scope || "international")}
+                        onChange={e => updateNodeData(org.id, "scope", e.target.value)}
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100"
+                      >
+                        <option value="international">International</option>
+                        <option value="national">National</option>
+                        <option value="regional">Regional</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={String(org.data.website_url || "")}
+                        onChange={e => updateNodeData(org.id, "website_url", e.target.value)}
+                        placeholder="Official Website URL"
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {onLocateOnCanvas && (
+                        <button
+                          onClick={() => onLocateOnCanvas(org.id)}
+                          className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded-lg transition"
+                          title="Locate on Canvas"
+                        >
+                          <Compass className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => removeNode(org.id)}
+                        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition"
+                        title="Delete Organization"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    {onLocateOnCanvas && (
-                      <button
-                        onClick={() => onLocateOnCanvas(org.id)}
-                        className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded-lg transition"
-                        title="Locate on Canvas"
-                      >
-                        <Compass className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => removeNode(org.id)}
-                      className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition"
-                      title="Delete Organization"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                  {/* Embedded Web Sources & Scrapers */}
+                  {(() => {
+                    const orgSources = Array.isArray(org.data.sources) ? (org.data.sources as WebSourceConfig[]) : [];
+                    return (
+                      <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                            <Globe className="h-3 w-3 text-sky-400" /> Embedded Scraper Sources ({orgSources.length})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddOrgSource(org.id)}
+                            className="px-2 py-0.5 bg-sky-950 hover:bg-sky-900 border border-sky-800 text-sky-300 rounded text-[10px] font-medium flex items-center gap-1 transition"
+                          >
+                            <Plus className="h-2.5 w-2.5" /> Add Source
+                          </button>
+                        </div>
+
+                        {orgSources.length === 0 ? (
+                          <div className="text-[11px] text-slate-500 italic py-0.5">
+                            No scraper endpoints attached. Click &quot;Add Source&quot; to configure a calendar URL.
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {orgSources.map((src: WebSourceConfig, sIdx: number) => (
+                              <div key={src.id || sIdx} className="bg-slate-950/80 border border-slate-800/90 p-2 rounded-lg flex flex-col md:flex-row items-center gap-2 text-xs">
+                                <input
+                                  type="text"
+                                  value={src.label || ""}
+                                  onChange={e => handleUpdateOrgSource(org.id, sIdx, "label", e.target.value)}
+                                  placeholder="Source Title"
+                                  className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 text-xs w-full md:w-36"
+                                />
+                                <input
+                                  type="text"
+                                  value={src.url || ""}
+                                  onChange={e => handleUpdateOrgSource(org.id, sIdx, "url", e.target.value)}
+                                  placeholder="https://..."
+                                  className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 text-xs font-mono flex-1"
+                                />
+                                <select
+                                  value={src.antibot || "none"}
+                                  onChange={e => handleUpdateOrgSource(org.id, sIdx, "antibot", e.target.value)}
+                                  className="bg-slate-900 border border-slate-800 rounded px-1.5 py-1 text-slate-300 text-xs font-mono"
+                                >
+                                  <option value="none">Standard HTTP</option>
+                                  <option value="cloud-flare">Cloudflare</option>
+                                  <option value="playwright">Playwright</option>
+                                </select>
+                                <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                                  <span>Depth:</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={5}
+                                    value={src.depth ?? 2}
+                                    onChange={e => handleUpdateOrgSource(org.id, sIdx, "depth", Number(e.target.value) || 2)}
+                                    className="bg-slate-900 border border-slate-800 rounded px-1 py-1 text-slate-200 text-xs w-10 text-center"
+                                  />
+                                </div>
+                                <label className="flex items-center gap-1 text-[11px] text-slate-300 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={src.use_healer !== false}
+                                    onChange={e => handleUpdateOrgSource(org.id, sIdx, "use_healer", e.target.checked)}
+                                    className="rounded accent-sky-500"
+                                  />
+                                  <span>Healer</span>
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveOrgSource(org.id, sIdx)}
+                                  className="p-1 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded transition ml-auto"
+                                  title="Delete Source"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -563,9 +679,9 @@ export default function FormBuilder({
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                  Target Web Sources & Calendars ({filteredSites.length})
+                  Standalone Web Sources ({filteredSites.length})
                 </h3>
-                <p className="text-xs text-slate-400">Target event directory URLs and calendar endpoints for scraping.</p>
+                <p className="text-xs text-slate-400">Web sources can be embedded directly inside each Organization above, or managed here as standalone nodes.</p>
               </div>
             </div>
 
@@ -663,9 +779,9 @@ export default function FormBuilder({
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                  Scraper Strategies & Healers ({filteredScrapers.length})
+                  Standalone Scraper Strategies ({filteredScrapers.length})
                 </h3>
-                <p className="text-xs text-slate-400">Automated crawling parameters and LLM auto-healers.</p>
+                <p className="text-xs text-slate-400">Scraper strategies can be configured inside each Organization above, or managed here as standalone nodes.</p>
               </div>
             </div>
 

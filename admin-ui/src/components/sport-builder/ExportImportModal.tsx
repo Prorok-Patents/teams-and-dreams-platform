@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { NodeData, EdgeData } from "./NodeCanvas";
+import { NodeData, EdgeData, WebSourceConfig } from "./NodeCanvas";
+import { normalizeGraph } from "./templates";
 import {
   Download,
   Upload,
@@ -69,17 +70,31 @@ export default function ExportImportModal({
     md += `## Organizations (${orgs.length})\n`;
     orgs.forEach(o => {
       md += `- **${o.label}** (${o.data.acronym || "No acronym"}) - Scope: ${o.data.scope || "N/A"} - Web: ${o.data.website_url || "N/A"}\n`;
+      const sources = Array.isArray(o.data.sources) ? (o.data.sources as WebSourceConfig[]) : [];
+      if (sources.length > 0) {
+        sources.forEach(s => {
+          md += `  * 🌐 ${s.label || "Source"}: ${s.url} (Anti-Bot: ${s.antibot || "none"}, Depth: ${s.depth || 2}, Healer: ${s.use_healer !== false ? "ON" : "OFF"})\n`;
+        });
+      }
     });
 
     md += `\n## Competitions (${comps.length})\n`;
     comps.forEach(c => {
       md += `- **${c.label}** (Tier ${c.data.tier || 1}) - URL: ${c.data.url || "N/A"}\n`;
+      const sources = Array.isArray(c.data.sources) ? (c.data.sources as WebSourceConfig[]) : [];
+      if (sources.length > 0) {
+        sources.forEach(s => {
+          md += `  * 🌐 ${s.label || "Source"}: ${s.url} (Anti-Bot: ${s.antibot || "none"}, Depth: ${s.depth || 2}, Healer: ${s.use_healer !== false ? "ON" : "OFF"})\n`;
+        });
+      }
     });
 
-    md += `\n## Web Crawl Sources (${sites.length})\n`;
-    sites.forEach(s => {
-      md += `- **${s.label}** - URL: ${s.data.url || "N/A"} (Anti-Bot: ${s.data.antibot || "none"})\n`;
-    });
+    if (sites.length > 0) {
+      md += `\n## Legacy Web Crawl Nodes (${sites.length})\n`;
+      sites.forEach(s => {
+        md += `- **${s.label}** - URL: ${s.data.url || "N/A"} (Anti-Bot: ${s.data.antibot || "none"})\n`;
+      });
+    }
 
     md += `\n## Relationship Paths (${edges.length})\n`;
     edges.forEach(e => {
@@ -118,7 +133,8 @@ export default function ExportImportModal({
       if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
         throw new Error("Invalid payload: Must contain 'nodes' and 'edges' arrays.");
       }
-      onImportGraph(parsed.nodes, parsed.edges, parsed.sportName);
+      const normalized = normalizeGraph(parsed.nodes, parsed.edges);
+      onImportGraph(normalized.nodes, normalized.edges, parsed.sportName);
       onClose();
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Failed to parse JSON file.");
