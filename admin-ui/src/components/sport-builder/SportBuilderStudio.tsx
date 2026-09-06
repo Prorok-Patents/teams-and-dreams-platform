@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import NodeCanvas, { NodeData, EdgeData, WebSourceConfig } from "./NodeCanvas";
 import NodeInspector from "./NodeInspector";
@@ -29,7 +30,8 @@ import {
   Paperclip,
   FileText,
   Loader2,
-  X
+  X,
+  Zap
 } from "lucide-react";
 
 /** Stable-keyed log entry for React reconciliation */
@@ -54,20 +56,43 @@ interface HistorySnapshot {
 }
 
 export default function SportBuilderStudio() {
+  const searchParams = useSearchParams();
+  const sportParam = searchParams.get("sport");
+  const drawerParam = searchParams.get("drawer");
+  const modalParam = searchParams.get("modal");
+
   const [viewMode, setViewMode] = useState<"canvas" | "form" | "split">("canvas");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
-  // Initial Nodes & Edges (Default: Curling Olympic standard)
-  const defaultTemplate = SPORT_TEMPLATES[0];
-  const initialNormalized = normalizeGraph(defaultTemplate.nodes, defaultTemplate.edges);
-  const [nodes, setNodes] = useState<NodeData[]>(initialNormalized.nodes);
-  const [edges, setEdges] = useState<EdgeData[]>(initialNormalized.edges);
-  const [currentSportBadge, setCurrentSportBadge] = useState<string>("Curling");
+  // Initial Nodes & Edges (matched from sportParam or Curling default)
+  const [nodes, setNodes] = useState<NodeData[]>(() => {
+    const initialTmpl = (sportParam && SPORT_TEMPLATES.find(
+      t => t.id.toLowerCase() === sportParam.toLowerCase() ||
+           t.name.toLowerCase().includes(sportParam.toLowerCase())
+    )) || SPORT_TEMPLATES[0];
+    return normalizeGraph(initialTmpl.nodes, initialTmpl.edges).nodes;
+  });
+
+  const [edges, setEdges] = useState<EdgeData[]>(() => {
+    const initialTmpl = (sportParam && SPORT_TEMPLATES.find(
+      t => t.id.toLowerCase() === sportParam.toLowerCase() ||
+           t.name.toLowerCase().includes(sportParam.toLowerCase())
+    )) || SPORT_TEMPLATES[0];
+    return normalizeGraph(initialTmpl.nodes, initialTmpl.edges).edges;
+  });
+
+  const [currentSportBadge, setCurrentSportBadge] = useState<string>(() => {
+    const initialTmpl = (sportParam && SPORT_TEMPLATES.find(
+      t => t.id.toLowerCase() === sportParam.toLowerCase() ||
+           t.name.toLowerCase().includes(sportParam.toLowerCase())
+    )) || SPORT_TEMPLATES[0];
+    return initialTmpl.name.split(" ")[0];
+  });
 
   // Undo / Redo History Stack
-  const [history, setHistory] = useState<HistorySnapshot[]>([
-    { nodes: initialNormalized.nodes, edges: initialNormalized.edges }
+  const [history, setHistory] = useState<HistorySnapshot[]>(() => [
+    { nodes, edges }
   ]);
   const [historyIndex, setHistoryIndex] = useState(0);
 
@@ -115,11 +140,52 @@ export default function SportBuilderStudio() {
     }
   }, [history, historyIndex]);
 
-  // Modals & Panels State
-  const [isExportImportOpen, setIsExportImportOpen] = useState(false);
-  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
-  const [isAssistantExpanded, setIsAssistantExpanded] = useState(true);
+  // Modals & Panels State (initialized with query param support)
+  const [isExportImportOpen, setIsExportImportOpen] = useState(() => modalParam === "export");
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(() => drawerParam === "diagnostics");
+  const [isAssistantExpanded, setIsAssistantExpanded] = useState(() => drawerParam !== "collapsed");
   const [assistantTab, setAssistantTab] = useState<"chat" | "logs">("chat");
+
+  // Adjust state during render when URL query params change (React 19 recommended pattern)
+  const [prevSportParam, setPrevSportParam] = useState(sportParam);
+  if (sportParam !== prevSportParam) {
+    setPrevSportParam(sportParam);
+    if (sportParam) {
+      const match = SPORT_TEMPLATES.find(
+        t => t.id.toLowerCase() === sportParam.toLowerCase() ||
+             t.name.toLowerCase().includes(sportParam.toLowerCase())
+      );
+      if (match) {
+        const normalized = normalizeGraph(match.nodes, match.edges);
+        setNodes(normalized.nodes);
+        setEdges(normalized.edges);
+        setCurrentSportBadge(match.name.split(" ")[0]);
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        setHistory([{ nodes: normalized.nodes, edges: normalized.edges }]);
+        setHistoryIndex(0);
+      }
+    }
+  }
+
+  const [prevDrawerParam, setPrevDrawerParam] = useState(drawerParam);
+  if (drawerParam !== prevDrawerParam) {
+    setPrevDrawerParam(drawerParam);
+    if (drawerParam === "copilot") {
+      setIsAssistantExpanded(true);
+      setAssistantTab("chat");
+    } else if (drawerParam === "diagnostics") {
+      setIsDiagnosticsOpen(true);
+    }
+  }
+
+  const [prevModalParam, setPrevModalParam] = useState(modalParam);
+  if (modalParam !== prevModalParam) {
+    setPrevModalParam(modalParam);
+    if (modalParam === "export") {
+      setIsExportImportOpen(true);
+    }
+  }
 
   // Filter State
   const [filterQuery, setFilterQuery] = useState("");
@@ -169,7 +235,7 @@ export default function SportBuilderStudio() {
   }, []);
 
   // Template / Sport Loaders
-  const handleLoadTemplate = (templateId: string) => {
+  const handleLoadTemplate = useCallback((templateId: string) => {
     const tmpl = SPORT_TEMPLATES.find(t => t.id === templateId);
     if (!tmpl) return;
     const normalized = normalizeGraph(tmpl.nodes, tmpl.edges);
@@ -179,7 +245,7 @@ export default function SportBuilderStudio() {
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     pushHistory(normalized.nodes, normalized.edges);
-  };
+  }, [pushHistory]);
 
   const handleLoadSport = async (sportId: string, sportName: string) => {
     try {
@@ -624,9 +690,9 @@ export default function SportBuilderStudio() {
   const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
 
   return (
-    <div className="flex-1 bg-[#070A14] text-slate-100 flex flex-col h-screen overflow-hidden font-sans">
+    <div className="flex-1 bg-[#070A14] text-slate-100 flex flex-col h-full overflow-hidden font-sans">
       {/* Top Header */}
-      <header className="h-16 border-b border-[#1E293B] bg-[#0C1226]/90 backdrop-blur-md px-6 flex items-center justify-between shrink-0 z-40">
+      <header className="h-14 border-b border-[#1E293B] bg-[#0C1226]/90 backdrop-blur-md px-5 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <Network className="h-5 w-5 text-white" />
@@ -732,8 +798,13 @@ export default function SportBuilderStudio() {
             {isAssistantExpanded ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
           </button>
 
-          <Link href="/" className="text-xs text-sky-400 hover:underline ml-1">
-            Dashboard
+          <Link
+            href={`/?sport=${currentSportBadge.toLowerCase()}`}
+            className="px-2.5 py-1.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/60 text-xs font-medium text-emerald-300 hover:text-white flex items-center gap-1.5 transition ml-1 shadow-xs"
+            title="Open sport in Pipeline Operations"
+          >
+            <Zap className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Pipeline Ops</span>
           </Link>
         </div>
       </header>

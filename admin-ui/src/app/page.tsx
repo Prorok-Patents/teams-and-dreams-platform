@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Network,
   Globe,
@@ -1034,11 +1035,23 @@ function StagePanel({
 // ============================================================================
 // MAIN PAGE COMPONENT
 // ============================================================================
-export default function Home() {
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const sportParam = searchParams.get("sport");
   const [sites, setSites] = useState<SiteKnowledge[]>(INITIAL_SITES);
   const [appMode, setAppMode] = useState<"sport" | "pipeline">("sport");
-  const [selectedSportId, setSelectedSportId] = useState<string | null>("curling");
+  const [selectedSportId, setSelectedSportId] = useState<string | null>(() => sportParam || "curling");
+  const [prevSportParam, setPrevSportParam] = useState(sportParam);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+
+  // Sync sport parameter during render when URL query changes
+  if (sportParam !== prevSportParam) {
+    setPrevSportParam(sportParam);
+    if (sportParam) {
+      setSelectedSportId(sportParam);
+      setAppMode("sport");
+    }
+  }
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSport] = useState<string>("all");
@@ -1181,7 +1194,7 @@ export default function Home() {
   };
 
   return (
-    <main className="flex-1 bg-[#090D1A] text-slate-100 flex overflow-hidden font-sans h-screen">
+    <main className="flex-1 bg-[#090D1A] text-slate-100 flex overflow-hidden font-sans h-full">
       <NewSportModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -1217,11 +1230,24 @@ export default function Home() {
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="w-full mb-4 py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md flex items-center justify-center gap-2 transition"
+            className="w-full mb-2 py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md flex items-center justify-center gap-2 transition"
           >
             <Plus className="h-4 w-4" />
             Onboard New Sport Pipeline
           </button>
+
+          {/* Quick Deep Link into Studio */}
+          <Link
+            href={`/intake?sport=${selectedSportId || "curling"}`}
+            className="w-full mb-3 py-1.5 px-3 bg-sky-950/40 hover:bg-sky-900/60 border border-sky-800/60 text-sky-300 hover:text-white rounded-xl text-xs font-medium flex items-center justify-between transition group shadow-xs"
+            title="Open selected sport in the visual node studio"
+          >
+            <span className="flex items-center gap-2">
+              <Network className="h-3.5 w-3.5 text-sky-400 group-hover:scale-110 transition-transform" />
+              <span className="capitalize">Edit in Intake Studio</span>
+            </span>
+            <ArrowRight className="h-3.5 w-3.5 text-sky-400 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
 
           <div className="bg-slate-900 p-1 rounded-lg flex border border-slate-800 w-full mb-3">
             <button
@@ -1425,7 +1451,17 @@ export default function Home() {
         <div className="w-96 bg-[#0C1226] border-l border-slate-800 shadow-2xl flex flex-col h-full absolute right-0 top-0 bottom-0 z-30">
           <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
             <div>
-              <h3 className="text-sm font-bold text-white">{selectedSite.org_name}</h3>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <span>{selectedSite.org_name}</span>
+                <Link
+                  href={`/intake?sport=${selectedSite.sport}`}
+                  className="px-1.5 py-0.5 rounded bg-sky-950/80 hover:bg-sky-900 border border-sky-800 text-[10px] font-mono text-sky-300 flex items-center gap-1 transition"
+                  title="Open in Intake Studio"
+                >
+                  <Network className="h-2.5 w-2.5" />
+                  <span>Studio</span>
+                </Link>
+              </h3>
               <p className="text-[10px] text-slate-500 font-mono">{selectedSite.base_url}</p>
             </div>
             <button
@@ -1448,5 +1484,19 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 bg-[#090D1A] flex items-center justify-center text-slate-400 text-xs">
+          Loading Pipeline Operations...
+        </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
   );
 }
